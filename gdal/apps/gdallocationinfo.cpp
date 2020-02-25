@@ -100,6 +100,9 @@ MAIN_START(argc, argv)
     bool               bQuiet = false, bValOnly = false;
     int                nOverview = -1;
     char             **papszOpenOptions = nullptr;
+    /*! grib identifies to search for */
+    char **papszGribElement = NULL;
+    char **papszGribShortName = NULL;
 
     GDALAllRegister();
     argc = GDALGeneralCmdLineProcessor( argc, &argv, 0 );
@@ -157,6 +160,15 @@ MAIN_START(argc, argv)
             bValOnly = true;
             bQuiet = true;
         }
+        else if( EQUAL(argv[i],"-gribelement") && i < argc-1 )
+        {
+            papszGribElement = CSLAddString( papszGribElement, argv[++i] );
+        }
+
+        else if( EQUAL(argv[i],"-gribshortname") && i < argc-1 )
+        {
+            papszGribShortName = CSLAddString( papszGribShortName, argv[++i] );
+        }
         else if( i < argc-1 && EQUAL(argv[i], "-oo") )
         {
             papszOpenOptions = CSLAddString( papszOpenOptions,
@@ -208,6 +220,31 @@ MAIN_START(argc, argv)
         hCT = OCTNewCoordinateTransformation( hSrcSRS, hTrgSRS );
         if( hCT == nullptr )
             exit( 1 );
+    }
+
+
+/* -------------------------------------------------------------------- */
+/*      Search for GRIB element and Short Name                          */
+/* -------------------------------------------------------------------- */
+    int nCount = CSLCount(papszGribElement);
+
+    for( int i = 0; i < nCount; i++ ) {
+        for( int iBand = 0; iBand < GDALGetRasterCount( hSrcDS ); iBand++ ) {
+
+            GDALRasterBandH hBand = GDALGetRasterBand( hSrcDS, iBand+1 );
+
+            const char *pszElement = GDALGetMetadataItem( hBand, "GRIB_ELEMENT", "" );
+            const char *pszShortName = GDALGetMetadataItem( hBand, "GRIB_SHORT_NAME", "" );
+
+            if( pszElement != NULL && pszShortName != NULL && EQUAL(pszElement, papszGribElement[i]) && EQUAL(pszShortName, papszGribShortName[i])) {
+                anBandList.push_back(iBand+1);
+            }
+        }
+    }
+
+    if (nCount > 0 && anBandList.size() == 0) {
+        fprintf( stderr, "Could not find GRIB element and short name specified.\n" );
+        exit(1);
     }
 
 /* -------------------------------------------------------------------- */
