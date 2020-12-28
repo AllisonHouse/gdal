@@ -724,7 +724,7 @@ static const GRIB2ParmTable MeteoMoist[] = {
 /* 110 */    {"SMLWHMA", "Specific Mass of Liquid Water Coating on Hail Expressed as "
               "Mass of Liquid Water per Unit Mass of Moist Air", "kg/kg", UC_NONE},
 /* 111 */    {"MMLWHDA", "Mass Mixing Ratio of Liquid Water Coating on Hail Expressed as "
-              "Mass of Liquid Water per Unit Mass of Dry Air", "kg/kg", UC_NONE}, 
+              "Mass of Liquid Water per Unit Mass of Dry Air", "kg/kg", UC_NONE},
 /* 112 */    {"MDLWGVA", "Mass Density of Liquid Water Coating on Graupel Expressed as "
               "Mass of Liquid Water per Unit Volume of Air", "kg/m^3", UC_NONE},
 /* 113 */    {"SMLWGMA", "Specific Mass of Liquid Water Coating on Graupel Expressed as "
@@ -1292,7 +1292,7 @@ static const GRIB2ParmTable MeteoAtmos[] = {
              "12-13=Reserved; 14=Critical Risk Area; 15-17=Reserved"
              "18=Extremely Critical Risk Area; 255=missing", UC_NONE},
 /* 27 */    {"ICESC", "Icing Scenario", "0=None; 1=General, 2=Convective "
-             "3=Stratiform; 4=Freezing; 5-191=Reserved; 255=missing", UC_NONE},          	
+             "3=Stratiform; 4=Freezing; 5-191=Reserved; 255=missing", UC_NONE},
 /* 28 */    {"MWTURB", "Mountain Wave Turbulence (Eddy Dissipation Rate)", "m^(2/3)/s" , UC_NONE},
 /* 29 */    {"CATEDR", "Clear Air Turbulence (CAT) (Eddy Dissipation Rate)", "m^(2/3)/s", UC_NONE},
 /* 30 */    {"EDPARM", "Eddy Dissipation Parameter", "m^(2/3)/s", UC_NONE},
@@ -1951,7 +1951,7 @@ static const NDFD_AbrevOverrideTable NDFD_Override[] = {
    /* 10 */ {"ASNOW", "SnowAmt"},
    /* 11 */ {"GUST", "WindGust"},
    /* 12 */ {"MAXRH", "MaxRH"},                /* MPA added 201202 */
-   /* 13 */ {"HTSGW", "WaveHeight"},           /* MPA added 201709 */      
+   /* 13 */ {"HTSGW", "WaveHeight"},           /* MPA added 201709 */
 };
 
 static const GRIB2LocalTable NDFD_LclTable[] = {
@@ -1983,7 +1983,7 @@ static const GRIB2LocalTable NDFD_LclTable[] = {
            {0, 19, 216, "TotalXtrmProb", "Total Probability of Extreme Severe Thunderstorms", "%", UC_NONE},
            {0, 19, 217, "WWA", "Watch Warning Advisory", "-", UC_NONE},
            {0, 19, 235, "TCWind", "Tropical Cyclone Wind Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},
-           {0, 19, 236, "TCSurge", "Tropical Cyclone Storm Surge Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},          
+           {0, 19, 236, "TCSurge", "Tropical Cyclone Storm Surge Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},
            {0, 19, 238, "TCRain", "Tropical Cyclone Flooding Rain Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},
            {0, 19, 239, "TCTornado", "Tropical Cyclone Tornado Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},
            {0, 19, 246, "SNOWLVL", "Snow Level", "m", UC_M2Feet},
@@ -2017,8 +2017,10 @@ static const GRIB2LocalTable Canada_LclTable[] = {
 
 
 
-/* See ./degrib/MRMS folder (specifically run ./reformat.tcl > degribtab.c) */
-/* 12/28/2020 */
+/*
+Updated 12/28/2020
+Documentation: https://www.nssl.noaa.gov/projects/mrms/operational/tables.php
+*/
 static const GRIB2LocalTable MRMS_LclTable[] = {
    /* 209 */ {209, 2, 0, "NLDN_CG_001min_AvgDensity", "CG Average Lightning Density 1-min - NLDN", "flashes/km^2/min", UC_NONE},
              {209, 2, 1, "NLDN_CG_005min_AvgDensity", "CG Average Lightning Density 5-min - NLDN", "flashes/km^2/min", UC_NONE},
@@ -2072,7 +2074,7 @@ static const GRIB2LocalTable MRMS_LclTable[] = {
              {209, 3, 57, "ReflectivityAtLowestAltitude", "ReflectivityAtLowestAltitude", "dBZ", UC_NONE},
              {209, 3, 57, "ReflectivityAtLowestAltitude5km", "ReflectivityAtLowestAltitude resampled from 1 to 5km resolution", "dBZ", UC_NONE},
              {209, 3, 58, "MergedReflectivityAtLowestAltitude", "Non Quality Controlled Reflectivity At Lowest Altitude", "dBZ", UC_NONE},
-             {209, 6, 0, "PrecipFlag,2-min,flag,-1,n/a", " Snow)"", ""Surface Precipitation Type (Convective", UC_NONE},
+             {209, 6, 0, "PrecipFlag", "Surface Precipitation Type", "flag", UC_NONE},
              {209, 6, 1, "PrecipRate", "Radar Precipitation Rate", "mm/hr", UC_NONE},
              {209, 6, 2, "RadarOnly_QPE_01H", "Radar precipitation accumulation 1-hour", "mm", UC_NONE},
              {209, 6, 3, "RadarOnly_QPE_03H", "Radar precipitation accumulation 3-hour", "mm", UC_NONE},
@@ -2128,8 +2130,8 @@ static const GRIB2LocalTable MRMS_LclTable[] = {
              {209, 8, 22, "GaugeInflIndex_48H_Pass2", "Gauge Influence Index for 48-hour QPE (2-hour latency)", "non-dim", UC_NONE},
              {209, 8, 23, "GaugeInflIndex_72H_Pass2", "Gauge Influence Index for 72-hour QPE (2-hour latency)", "non-dim", UC_NONE},
              {209, 9, 0, "MergedReflectivityQC", "3D Reflectivty Mosaic - 33 CAPPIS (500-19000m)", "dBZ", UC_NONE},
-             {209, 9, 3, "MergedRhoHV,5-min", ""NEW! 33 levels (one file per level)", "-99", UC_NONE},
-             {209, 9, 4, "MergedZdr,5-min", ""NEW! 33 levels (one file per level)", "-99", UC_NONE},
+             {209, 9, 3, "MergedRhoHV,5-min", "33 levels (one file per level)", "-99", UC_NONE},
+             {209, 9, 4, "MergedZdr,5-min", "33 levels (one file per level)", "-99", UC_NONE},
              {209, 10, 0, "MergedReflectivityQCComposite", "Composite Reflectivity Mosaic (optimal method)", "dBZ", UC_NONE},
              {209, 10, 0, "MergedReflectivityQCComposite5km", "Composite Reflectivity Mosaic (optimal method) resampled from 1 to 5km", "dBZ", UC_NONE},
              {209, 10, 1, "HeightCompositeReflectivity", "Height of Composite Reflectivity Mosaic (optimal method)", "m MSL", UC_NONE},
@@ -2279,16 +2281,16 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
             {0, 2, 218, "LMV", "Velocity point model surface", "-", UC_NONE},
             {0, 2, 219, "PVMWW", "Potential vorticity (mass-weighted)", "1/(s/m)", UC_NONE},
             {0, 2, 220, "MAXUVV", "Hourly Maximum of Downward Vertical Velocity in the lowest 400hPa", "m/s", UC_NONE},
-            {0, 2, 221, "MAXDVV", "Hourly Maximum of Downward Vertical Velocity", "m/s", UC_NONE}, 
-            {0, 2, 222, "MAXUW", "U Component of Hourly Maximum 10m Wind Speed", "m/s", UC_NONE}, 
-            {0, 2, 223, "MAXVW", "V Component of Hourly Maximum 10m Wind Speed", "m/s", UC_NONE}, 
-            {0, 2, 224, "VRATE", "Ventilation Rate", "m^2/s", UC_NONE}, 
-            {0, 2, 225, "TRWSPD", "Transport Wind Speed", "m/s", UC_NONE}, 
-            {0, 2, 226, "TRWDIR", "Transport Wind Direction", "deg", UC_NONE}, 
-            {0, 2, 227, "TOA10", "Earliest Reasonable Arrival Time (10% exceedance)", "s", UC_NONE}, 
-            {0, 2, 228, "TOA50", "Most Likely Arrival Time (50% exceedance)", "s", UC_NONE}, 
-            {0, 2, 229, "TOD50", "Most Likely Departure Time (50% exceedance)", "s", UC_NONE}, 
-            {0, 2, 230, "TOD90", "Latest Reasonable Departure Time (90% exceedance)", "s", UC_NONE}, 
+            {0, 2, 221, "MAXDVV", "Hourly Maximum of Downward Vertical Velocity", "m/s", UC_NONE},
+            {0, 2, 222, "MAXUW", "U Component of Hourly Maximum 10m Wind Speed", "m/s", UC_NONE},
+            {0, 2, 223, "MAXVW", "V Component of Hourly Maximum 10m Wind Speed", "m/s", UC_NONE},
+            {0, 2, 224, "VRATE", "Ventilation Rate", "m^2/s", UC_NONE},
+            {0, 2, 225, "TRWSPD", "Transport Wind Speed", "m/s", UC_NONE},
+            {0, 2, 226, "TRWDIR", "Transport Wind Direction", "deg", UC_NONE},
+            {0, 2, 227, "TOA10", "Earliest Reasonable Arrival Time (10% exceedance)", "s", UC_NONE},
+            {0, 2, 228, "TOA50", "Most Likely Arrival Time (50% exceedance)", "s", UC_NONE},
+            {0, 2, 229, "TOD50", "Most Likely Departure Time (50% exceedance)", "s", UC_NONE},
+            {0, 2, 230, "TOD90", "Latest Reasonable Departure Time (90% exceedance)", "s", UC_NONE},
 /* Removed 8/19/2008 */ /*           {0, 2, 220, "MFLX", "Momentum flux", "N/m^2", UC_NONE},*/
 
    /* 21 */ {0, 3, 192, "MSLET", "MSLP (Eta model reduction)", "Pa", UC_NONE},
@@ -2462,10 +2464,10 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
 */
             {0, 19, 232, "VAFTD", "Volcanic Ash Forecast Transport and Dispersion", "log10(kg/m^3)", UC_NONE},
             {0, 19, 233, "ICPRB", "Icing probability", "-", UC_NONE},
-            {0, 19, 234, "ICSEV", "Icing severity", "-", UC_NONE}, 
-            {0, 19, 235, "JFWPRB", "Joint Fire Weather Probability", "%", UC_NONE}, 
-            {0, 19, 236, "SNOWLVL", "Snow Level", "m", UC_NONE}, 
-            {0, 19, 237, "DRYTPROB", "Dry Thunderstorm Probability", "%", UC_NONE}, 
+            {0, 19, 234, "ICSEV", "Icing severity", "-", UC_NONE},
+            {0, 19, 235, "JFWPRB", "Joint Fire Weather Probability", "%", UC_NONE},
+            {0, 19, 236, "SNOWLVL", "Snow Level", "m", UC_NONE},
+            {0, 19, 237, "DRYTPROB", "Dry Thunderstorm Probability", "%", UC_NONE},
 
    /* 47 */ {0, 191, 192, "NLAT", "Latitude (-90 to 90)", "deg", UC_NONE},
    /* 48 */ {0, 191, 193, "ELON", "East Longitude (0 to 360)", "deg", UC_NONE},
@@ -2975,7 +2977,7 @@ static void ElemNameProb (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
    } else {
       table = nullptr;
    }
-   
+
    if (table != nullptr) {
       if (subcat < tableLen) {
          /* Check for NDFD over-rides. */
@@ -3161,7 +3163,7 @@ static void ElemNamePerc (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
    } else {
       table = nullptr;
    }
-   
+
    if (table != nullptr) {
       if (subcat < tableLen) {
          /* Check for NDFD over-rides. */
@@ -3295,7 +3297,7 @@ static void ElemNamePerc (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
 /* Deal with non-prob templates 2/16/2006 */
 static void ElemNameNorm (uChar mstrVersion, uShort2 center, uShort2 subcenter, int prodType,
                           int templat, uChar cat, uChar subcat, sInt4 lenTime,
-                          uChar timeRangeUnit, uChar statProcessID, 
+                          uChar timeRangeUnit, uChar statProcessID,
                           CPL_UNUSED uChar timeIncrType,
                           CPL_UNUSED uChar genID,
                           CPL_UNUSED uChar probType,
@@ -3399,7 +3401,7 @@ static void ElemNameNorm (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
    } else {
       table = nullptr;
    }
-   
+
    if (table != nullptr) {
       if (subcat < tableLen) {
          /* Check for NDFD over-rides. */
@@ -3445,16 +3447,16 @@ static void ElemNameNorm (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
             if (strcmp (table[subcat].name, "EVP") == 0) {
                if (statProcessID == 10) {
                   mallocSprintf (name, "%s%02d", "EvpDep", lenTime);
-                  mallocSprintf (comment, "%02d hr Evapo-Transpiration departure from normal", 
+                  mallocSprintf (comment, "%02d hr Evapo-Transpiration departure from normal",
                                  lenTime);
                } else {
-                  mallocSprintf (name, "%s%02d", "Evp", lenTime);              
+                  mallocSprintf (name, "%s%02d", "Evp", lenTime);
                   mallocSprintf (comment, "%02d hr Evapo-Transpiration", lenTime);
                }
                mallocSprintf (unit, "[%s]", table[subcat].unit);
                *convert = table[subcat].convert;
                return;
-            }   
+            }
             for (i = 0; i < (sizeof (NDFD_Override) /
                              sizeof (NDFD_AbrevOverrideTable)); i++) {
                if (strcmp (NDFD_Override[i].GRIB2name, table[subcat].name) ==
