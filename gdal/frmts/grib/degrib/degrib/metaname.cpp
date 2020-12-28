@@ -2074,7 +2074,6 @@ static const GRIB2LocalTable MRMS_LclTable[] = {
              {209, 3, 56, "Reflectivity_-20C", "Isothermal Reflectivity at -20C", "dBZ", UC_NONE},
              {209, 3, 57, "ReflectivityAtLowestAltitude", "ReflectivityAtLowestAltitude", "dBZ", UC_NONE},
              {209, 3, 58, "MergedReflectivityAtLowestAltitude", "Non Quality Controlled Reflectivity At Lowest Altitude", "dBZ", UC_NONE},
-             {209, 3, 57, "ReflectivityAtLowestAltitude", "ReflectivityAtLowestAltitude", "dBZ", UC_NONE},
              {209, 4, 0, "IRband4", "Infrared (E/W blend)", "K", UC_NONE},
              {209, 4, 1, "Visible", "Visible (E/W blend)", "non-dim", UC_NONE},
              {209, 4, 2, "WaterVapor", "Water Vapor (E/W blend)", "K", UC_NONE},
