@@ -51,8 +51,8 @@ static std::mutex gMutex;
 static bool gbHasInitializedPython = false;
 static PyThreadState* gphThreadState = nullptr;
 
-static PyGILState_STATE (*PyGILState_Ensure)(void) = nullptr;
-static void (*PyGILState_Release)(PyGILState_STATE) = nullptr;
+static PyGILState_STATE (*PyLibGILState_Ensure)(void) = nullptr;
+static void (*PyLibGILState_Release)(PyGILState_STATE) = nullptr;
 
 // Emulate Py_CompileString with Py_CompileStringExFlags
 // Probably just a temporary measure for a bug of Python 3.8.0 on Windows
@@ -193,6 +193,7 @@ static bool LoadPythonAPI()
 
     // First try in the current process in case the python symbols would
     // be already loaded
+    (void) libHandle;
     libHandle = dlopen(nullptr, RTLD_LAZY);
     libHandleStatic = libHandle;
     if( libHandle != nullptr &&
@@ -388,7 +389,7 @@ static bool LoadPythonAPI()
     }
 
     // Otherwise probe a few known objects.
-    // Note: update doc/source/drivers/raster/vrt.rst if changechange
+    // Note: update doc/source/drivers/raster/vrt.rst if change
     if( libHandle == nullptr )
     {
         const char* const apszPythonSO[] = { "libpython2.7." SO_EXT,
@@ -396,6 +397,7 @@ static bool LoadPythonAPI()
                                                 "libpython3.6m." SO_EXT,
                                                 "libpython3.7m." SO_EXT,
                                                 "libpython3.8m." SO_EXT,
+                                                "libpython3.9m." SO_EXT,
                                                 "libpython3.4m." SO_EXT,
                                                 "libpython3.3." SO_EXT,
                                                 "libpython3.2." SO_EXT };
@@ -592,6 +594,7 @@ static bool LoadPythonAPI()
                                             "python36.dll",
                                             "python37.dll",
                                             "python38.dll",
+                                            "python39.dll",
                                             "python34.dll",
                                             "python33.dll",
                                             "python32.dll" };
@@ -732,8 +735,8 @@ static bool LoadPythonAPI()
     LOAD(libHandle, PySequence_Size);
     LOAD(libHandle, PySequence_GetItem);
     LOAD(libHandle, PyArg_ParseTuple);
-    LOAD(libHandle, PyGILState_Ensure);
-    LOAD(libHandle, PyGILState_Release);
+    LOAD_WITH_NAME(libHandle, PyLibGILState_Ensure, "PyGILState_Ensure");
+    LOAD_WITH_NAME(libHandle, PyLibGILState_Release, "PyGILState_Release");
     LOAD(libHandle, PyErr_Fetch);
     LOAD(libHandle, PyErr_Clear);
     LOAD(libHandle, Py_GetVersion);
@@ -812,7 +815,7 @@ GIL_Holder::GIL_Holder(bool bExclusiveLock):
     {
         gMutex.lock();
     }
-    m_eState = PyGILState_Ensure();
+    m_eState = PyLibGILState_Ensure();
 }
 
 /************************************************************************/
@@ -821,7 +824,7 @@ GIL_Holder::GIL_Holder(bool bExclusiveLock):
 
 GIL_Holder::~GIL_Holder()
 {
-    PyGILState_Release(m_eState);
+    PyLibGILState_Release(m_eState);
     if( m_bExclusiveLock )
     {
         gMutex.unlock();

@@ -563,8 +563,7 @@ MAIN_START(argc, argv)
         OCTDestroyCoordinateTransformation( hCT );
     }
 
-    if (hSrcDS)
-        GDALClose(hSrcDS);
+    GDALClose(hSrcDS);
 
     GDALDumpOpenDatasets( stderr );
     GDALDestroyDriverManager();

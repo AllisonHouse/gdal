@@ -193,7 +193,7 @@ public class gdal:public static int SetErrorHandler()
  * CE_Fatal meaning that a fatal error has occurred, and that Error()
  * should not return.
  * <p>
- * The default behaviour of Error() is to report errors to stderr,
+ * The default behavior of Error() is to report errors to stderr,
  * and to abort() after reporting a gdalconst.CE_Fatal error.  It is expected that
  * some applications will want to suppress error reporting, and will want to
  * install a C++ exception, or longjmp() approach to no local fatal error
@@ -900,7 +900,7 @@ public class gdal:public static int FillNodata(Band targetBand, Band maskBand, d
  * Removes small raster polygons.
  * <p>
  * The function removes raster polygons smaller than a provided
- * threshold size (in pixels) and replaces replaces them with the pixel value
+ * threshold size (in pixels) and replaces them with the pixel value
  * of the largest neighbour polygon.
  * <p>
  * Polygon are determined (per GDALRasterPolygonEnumerator) as regions of
@@ -1889,7 +1889,7 @@ public class Dataset:public Band GetRasterBand(int nBandId)
  *
  * @return the projection string.
  *
- * @see <a href="http://www.gdal.org/ogr/osr_tutorial.html">OSR tutorial</a>
+ * @see <a href="https://gdal.org/tutorials/osr_api_tut.html">OSR tutorial</a>
  */
 public class Dataset:public String GetProjection()
 
@@ -1905,7 +1905,7 @@ public class Dataset:public String GetProjection()
  *
  * @return the projection string.
  *
- * @see <a href="http://www.gdal.org/ogr/osr_tutorial.html">OSR tutorial</a>
+ * @see <a href="https://gdal.org/tutorials/osr_api_tut.html">OSR tutorial</a>
  */
 public class Dataset:public String GetProjectionRef()
 
@@ -4972,8 +4972,8 @@ public class org.gdal.gdal.Driver:public Dataset CreateCopy(String name, Dataset
  * <p>
  * The driver will attempt to delete the named dataset in a driver specific
  * fashion.  Full featured drivers will delete all associated files,
- * database objects, or whatever is appropriate.  The default behaviour when
- * no driver specific behaviour is provided is to attempt to delete the
+ * database objects, or whatever is appropriate.  The default behavior when
+ * no driver specific behavior is provided is to attempt to delete the
  * passed name as a single file.
  * <p>
  * It is unwise to have open dataset handles on this dataset when it is
@@ -8790,7 +8790,7 @@ public class Geometry:public String GetGeometryName()
 /**
  * Fetch geometry from a geometry container.
  * <p>
- * This function returns an handle to a geometry within the container.
+ * This function returns a handle to a geometry within the container.
  * The returned geometry remains owned by the container, and should not be
  * modified.  The handle is only valid until the next change to the
  * geometry container.  Use Clone() to make a copy.
@@ -9661,7 +9661,7 @@ public class ogr
 /**
  * Use exceptions instead of error return codes.
  * <p>
- * This is the default behaviour : methods that in C/C++ return an OGRErr return code
+ * This is the default behavior : methods that in C/C++ return an OGRErr return code
  * would throw a RuntimeException() in case the code it is different
  * from ogr.OGRERR_NONE. By calling this method, you can get
  * back to that original state if DontUseExceptions() was called in-between.
@@ -10155,7 +10155,7 @@ public class ogr:public static Geometry ForceToMultiLineString(Geometry geom)
  * SRS using GetAttrValue(), but in special cases the underlying parse tree
  * (or OGR_SRSNode objects) can be accessed more directly.
  * <p>
- * See <a href="http://www.gdal.org/ogr/osr_tutorial.html">the tutorial</a> for more information on
+ * See <a href="https://gdal.org/tutorials/osr_api_tut.html">the tutorial</a> for more information on
  * how to use this class.
  */
 public class SpatialReference
@@ -11909,9 +11909,125 @@ public class CoordinateTransformation:public double[] TransformPoint(double x, d
  * <p>
  * The provided array will be modified in place.
  *
- * @param pointArray an array of coordinates. Each coordinate can be either 2D or 3D
+ * @param pointArray an array of coordinates. Each coordinate can be either 2D, 3D or 4D
  */
 public class CoordinateTransformation:public void TransformPoints(double[][] pointArray)
+
+/**
+ * Transform point from source to destination space.
+ *
+ * @param argout array of 4 double values where the transformed coordinates will be put.
+ * @param x input x value
+ * @param y input y value
+ * @param z input z value
+ * @param t input t value
+ * @return the error code. 0 means no error.
+ *         See osrConstants.PROJ_ERR_xxxxx enumerated code for the possible error codes.
+ * @since GDAL 3.3 and PROJ 8
+ */
+public class CoordinateTransformation:public int TransformPointWithErrorCode(double[] argout, double x, double y, double z, double t)
+
+/**
+ * Transform points from source to destination space.
+ * <p>
+ * The provided array will be modified in place.
+ *
+ * @param pointArray an array of coordinates. Each coordinate can be either 2D, 3D or 4D
+ * @return an array of integer with the error codes for each coordinate. 0 means no error.
+ *         See osrConstants.PROJ_ERR_xxxxx enumerated code for the possible error codes.
+ * @since GDAL 3.3 and PROJ 8
+ */
+public class CoordinateTransformation:public int[] TransformPointsWithErrorCodes(double[][] pointArray)
+
+
+/**
+ * Class of error codes typically related to coordinate operation initalization,
+ * typically when creating a PJ* object from a PROJ string.
+ *
+ * Some of them can also be emitted during coordinate transformation,
+ * like PROJ_ERR_INVALID_OP_FILE_NOT_FOUND_OR_INVALID in case the resource loading
+ * is differed until it is really needed.
+ */
+public interface osrConstants:public final static int PROJ_ERR_INVALID_OP
+
+/**
+ * Invalid pipeline structure, missing +proj argument, etc.
+ */
+public interface osrConstants:public final static int PROJ_ERR_INVALID_OP_WRONG_SYNTAX
+
+/**
+ *Missing required operation parameter
+ */
+public interface osrConstants:public final static int PROJ_ERR_INVALID_OP_MISSING_ARG
+
+/**
+ *One of the operation parameter has an illegal value.
+ */
+public interface osrConstants:public final static int PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE
+
+/**
+ * Mutually exclusive arguments.
+ */
+public interface osrConstants:public final static int PROJ_ERR_INVALID_OP_MUTUALLY_EXCLUSIVE_ARGS
+
+/**
+ * File not found or with invalid content (particular case of PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE)
+ */
+public interface osrConstants:public final static int PROJ_ERR_INVALID_OP_FILE_NOT_FOUND_OR_INVALID
+
+
+/**
+ * Class of error codes related to transformation on a specific coordinate.
+ */
+public interface osrConstants:public final static int PROJ_ERR_COORD_TRANSFM
+
+/**
+ * Invalid input coordinate. e.g a latitude > 90°.
+ */
+public interface osrConstants:public final static int PROJ_ERR_COORD_TRANSFM_INVALID_COORD
+
+/**
+ * Coordinate is outside of the projection domain. e.g approximate mercator with \|longitude - lon_0\| > 90°,
+ * or iterative convergence method failed.
+ */
+public interface osrConstants:public final static int PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN
+
+/**
+ * No operation found, e.g if no match the required accuracy, or if ballpark transformations
+ * were asked to not be used and they would be only such candidate.
+ */
+public interface osrConstants:public final static int PROJ_ERR_COORD_TRANSFM_NO_OPERATION
+
+/**
+ * Point to transform falls outside grid/subgrid/TIN.
+ */
+public interface osrConstants:public final static int PROJ_ERR_COORD_TRANSFM_OUTSIDE_GRID
+
+/**
+ * Point to transform falls in a grid cell that evaluates to nodata.
+ */
+public interface osrConstants:public final static int PROJ_ERR_COORD_TRANSFM_GRID_AT_NODATA
+
+
+/**
+ * Class of error codes that do not fit into one of the above class.
+ */
+public interface osrConstants:public final static int PROJ_ERR_OTHER
+
+/**
+ * Error related to a misuse of PROJ API.
+ */
+public interface osrConstants:public final static int PROJ_ERR_OTHER_API_MISUSE
+
+/**
+ * No inverse method available.
+ */
+public interface osrConstants:public final static int PROJ_ERR_OTHER_NO_INVERSE_OP
+
+/**
+ * Failure when accessing a network resource.
+ */
+public interface osrConstants:public final static int PROJ_ERR_OTHER_NETWORK_ERROR
 
 
 /* Class osr */
@@ -11923,7 +12039,7 @@ public class osr
 /**
  * Use exceptions instead of error return codes.
  * <p>
- * This is the default behaviour : methods that in C/C++ return an OGRErr return code
+ * This is the default behavior : methods that in C/C++ return an OGRErr return code
  * would throw a RuntimeException() in case the code it is different
  * from ogr.OGRERR_NONE. By calling this method, you can get
  * back to that original state if DontUseExceptions() was called in-between.

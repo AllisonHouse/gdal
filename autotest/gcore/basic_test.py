@@ -506,7 +506,7 @@ def test_basic_test_16():
     with gdaltest.error_handler():
         gdal.OpenEx('/vsimem/temp.tif', gdal.OF_UPDATE, open_options=['@NUM_THREADS=INVALID'])
     gdal.Unlink('/vsimem/temp.tif')
-    assert gdal.GetLastErrorMsg() == 'Invalid value for NUM_THREADS: INVALID'
+    assert 'Invalid value for NUM_THREADS: INVALID' in gdal.GetLastErrorMsg()
 
 ###############################################################################
 # Test mix of gdal/ogr.UseExceptions()/DontUseExceptions()
@@ -562,7 +562,7 @@ def test_gdal_setspatialref():
     ds = gdal.Open('data/byte.tif')
     sr = ds.GetSpatialRef()
     ds = gdal.GetDriverByName('MEM').Create('',1,1)
-    ds.SetSpatialRef(sr)
+    assert ds.SetSpatialRef(sr) == gdal.CE_None
     sr_got = ds.GetSpatialRef()
     assert sr_got
     assert sr_got.IsSame(sr)

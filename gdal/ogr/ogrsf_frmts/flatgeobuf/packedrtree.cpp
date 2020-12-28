@@ -1,3 +1,33 @@
+/******************************************************************************
+ *
+ * Project:  FlatGeobuf
+ * Purpose:  Packed RTree management
+ * Author:   Björn Harrtell <bjorn at wololo dot org>
+ *
+ ******************************************************************************
+ * Copyright (c) 2018-2020, Björn Harrtell <bjorn at wololo dot org>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ ****************************************************************************/
+
+// NOTE: The upstream of this file is in https://github.com/bjornharrtell/flatgeobuf/tree/master/src/cpp
+
 #ifdef GDAL_COMPILATION
 #include "cpl_port.h"
 #else
@@ -13,12 +43,13 @@
 namespace FlatGeobuf
 {
 
-void NodeItem::expand(const NodeItem& r)
+const NodeItem &NodeItem::expand(const NodeItem &r)
 {
     if (r.minX < minX) minX = r.minX;
     if (r.minY < minY) minY = r.minY;
     if (r.maxX > maxX) maxX = r.maxX;
     if (r.maxY > maxY) maxY = r.maxY;
+    return *this;
 }
 
 NodeItem NodeItem::create(uint64_t offset)
@@ -32,7 +63,7 @@ NodeItem NodeItem::create(uint64_t offset)
     };
 }
 
-bool NodeItem::intersects(const NodeItem& r) const
+bool NodeItem::intersects(const NodeItem &r) const
 {
     if (maxX < r.minX) return false;
     if (maxY < r.minY) return false;
@@ -96,11 +127,16 @@ uint32_t hilbert(uint32_t x, uint32_t y)
     return value;
 }
 
-uint32_t hilbert(const NodeItem& r, uint32_t hilbertMax, const NodeItem& extent)
+uint32_t hilbert(const NodeItem &r, uint32_t hilbertMax, const double minX, const double minY, const double width, const double height)
 {
-    uint32_t x = static_cast<uint32_t>(floor(hilbertMax * ((r.minX + r.maxX) / 2 - extent.minX) / extent.width()));
-    uint32_t y = static_cast<uint32_t>(floor(hilbertMax * ((r.minY + r.maxY) / 2 - extent.minY) / extent.height()));
-    uint32_t v = hilbert(x, y);
+    uint32_t x = 0;
+    uint32_t y = 0;
+    uint32_t v;
+    if (width != 0.0)
+        x = static_cast<uint32_t>(floor(hilbertMax * ((r.minX + r.maxX) / 2 - minX) / width));
+    if (height != 0.0)
+        y = static_cast<uint32_t>(floor(hilbertMax * ((r.minY + r.maxY) / 2 - minY) / height));
+    v = hilbert(x, y);
     return v;
 }
 
@@ -108,42 +144,43 @@ const uint32_t hilbertMax = (1 << 16) - 1;
 
 void hilbertSort(std::vector<std::shared_ptr<Item>> &items)
 {
-    NodeItem extent = std::accumulate(items.begin(), items.end(), NodeItem::create(0), [] (NodeItem a, std::shared_ptr<Item> b) {
-        a.expand(b->nodeItem);
-        return a;
-    });
-    std::sort(items.begin(), items.end(), [&extent] (std::shared_ptr<Item> a, std::shared_ptr<Item> b) {
-        uint32_t ha = hilbert(a->nodeItem, hilbertMax, extent);
-        uint32_t hb = hilbert(b->nodeItem, hilbertMax, extent);
+    NodeItem extent = calcExtent(items);
+    const double minX = extent.minX;
+    const double minY = extent.minY;
+    const double width = extent.width();
+    const double height = extent.height();
+    std::sort(items.begin(), items.end(), [minX, minY, width, height] (std::shared_ptr<Item> a, std::shared_ptr<Item> b) {
+        uint32_t ha = hilbert(a->nodeItem, hilbertMax, minX, minY, width, height);
+        uint32_t hb = hilbert(b->nodeItem, hilbertMax, minX, minY, width, height);
         return ha > hb;
     });
-}
-
-NodeItem calcExtent(const std::vector<NodeItem> &nodes)
-{
-    NodeItem extent = std::accumulate(nodes.begin(), nodes.end(), NodeItem::create(0), [] (NodeItem a, const NodeItem& b) {
-        a.expand(b);
-        return a;
-    });
-    return extent;
-}
-
-NodeItem calcExtent(const std::vector<std::shared_ptr<Item>> &items)
-{
-    NodeItem extent = std::accumulate(items.begin(), items.end(), NodeItem::create(0), [] (NodeItem a, std::shared_ptr<Item> b) {
-        a.expand(b->nodeItem);
-        return a;
-    });
-    return extent;
 }
 
 void hilbertSort(std::vector<NodeItem> &items)
 {
     NodeItem extent = calcExtent(items);
-    std::sort(items.begin(), items.end(), [&extent] (const NodeItem& a, const NodeItem& b) {
-        uint32_t ha = hilbert(a, hilbertMax, extent);
-        uint32_t hb = hilbert(b, hilbertMax, extent);
+    const double minX = extent.minX;
+    const double minY = extent.minY;
+    const double width = extent.width();
+    const double height = extent.height();
+    std::sort(items.begin(), items.end(), [minX, minY, width, height] (const NodeItem &a, const NodeItem &b) {
+        uint32_t ha = hilbert(a, hilbertMax, minX, minY, width, height);
+        uint32_t hb = hilbert(b, hilbertMax, minX, minY, width, height);
         return ha > hb;
+    });
+}
+
+NodeItem calcExtent(const std::vector<std::shared_ptr<Item>> &items)
+{
+    return std::accumulate(items.begin(), items.end(), NodeItem::create(0), [] (NodeItem &a, std::shared_ptr<Item> b) {
+        return a.expand(b->nodeItem);
+    });
+}
+
+NodeItem calcExtent(const std::vector<NodeItem> &nodes)
+{
+    return std::accumulate(nodes.begin(), nodes.end(), NodeItem::create(0), [] (NodeItem &a, const NodeItem &b) {
+        return a.expand(b);
     });
 }
 
@@ -181,10 +218,8 @@ std::vector<std::pair<uint64_t, uint64_t>> PackedRTree::generateLevelBounds(cons
     // bounds per level in reversed storage order (top-down)
     std::vector<uint64_t> levelOffsets;
     n = numNodes;
-    for (auto size : levelNumNodes) {
-        levelOffsets.push_back(n - size);
-        n -= size;
-    }
+    for (auto size : levelNumNodes)
+        levelOffsets.push_back(n -= size);
     std::reverse(levelOffsets.begin(), levelOffsets.end());
     std::reverse(levelNumNodes.begin(), levelNumNodes.end());
     std::vector<std::pair<uint64_t, uint64_t>> levelBounds;
@@ -220,25 +255,23 @@ void PackedRTree::fromData(const void *data)
     }
 }
 
-PackedRTree::PackedRTree(const std::vector<std::shared_ptr<Item>> &items, const NodeItem& extent, const uint16_t nodeSize) :
+PackedRTree::PackedRTree(const std::vector<std::shared_ptr<Item>> &items, const NodeItem &extent, const uint16_t nodeSize) :
     _extent(extent),
     _numItems(items.size())
 {
     init(nodeSize);
-    for (size_t i = 0; i < _numItems; i++) {
+    for (size_t i = 0; i < _numItems; i++)
         _nodeItems[_numNodes - _numItems + i] = items[i]->nodeItem;
-    }
     generateNodes();
 }
 
-PackedRTree::PackedRTree(const std::vector<NodeItem> &nodes, const NodeItem& extent, const uint16_t nodeSize) :
+PackedRTree::PackedRTree(const std::vector<NodeItem> &nodes, const NodeItem &extent, const uint16_t nodeSize) :
     _extent(extent),
     _numItems(nodes.size())
 {
     init(nodeSize);
-    for (size_t i = 0; i < _numItems; i++) {
+    for (size_t i = 0; i < _numItems; i++)
         _nodeItems[_numNodes - _numItems + i] = nodes[i];
-    }
     generateNodes();
 }
 
@@ -252,6 +285,7 @@ PackedRTree::PackedRTree(const void *data, const uint64_t numItems, const uint16
 
 std::vector<SearchResultItem> PackedRTree::search(double minX, double minY, double maxX, double maxY) const
 {
+    uint64_t leafNodesOffset = _levelBounds.front().first;
     NodeItem n { minX, minY, maxX, maxY, 0 };
     std::vector<SearchResultItem> results;
     std::unordered_map<uint64_t, uint64_t> queue;
@@ -270,7 +304,7 @@ std::vector<SearchResultItem> PackedRTree::search(double minX, double minY, doub
             if (!n.intersects(nodeItem))
                 continue;
             if (isLeafNode)
-                results.push_back({ nodeItem.offset, pos - 1 });
+                results.push_back({ nodeItem.offset, pos - leafNodesOffset });
             else
                 queue.insert(std::pair<uint64_t, uint64_t>(nodeItem.offset, level - 1));
         }
@@ -279,13 +313,13 @@ std::vector<SearchResultItem> PackedRTree::search(double minX, double minY, doub
 }
 
 std::vector<SearchResultItem> PackedRTree::streamSearch(
-    const uint64_t numItems, const uint16_t nodeSize, const NodeItem& item,
+    const uint64_t numItems, const uint16_t nodeSize, const NodeItem &item,
     const std::function<void(uint8_t *, size_t, size_t)> &readNode)
 {
     auto levelBounds = generateLevelBounds(numItems, nodeSize);
+    uint64_t leafNodesOffset = levelBounds.front().first;
     uint64_t numNodes = levelBounds.front().second;
-    std::vector<NodeItem> nodeItems;
-    nodeItems.reserve(nodeSize);
+    auto nodeItems = std::vector<NodeItem>(nodeSize);
     uint8_t *nodesBuf = reinterpret_cast<uint8_t *>(nodeItems.data());
     // use ordered search queue to make index traversal in sequential order
     std::map<uint64_t, uint64_t> queue;
@@ -318,7 +352,7 @@ std::vector<SearchResultItem> PackedRTree::streamSearch(
             if (!item.intersects(nodeItem))
                 continue;
             if (isLeafNode)
-                results.push_back({ nodeItem.offset, pos - 1 });
+                results.push_back({ nodeItem.offset, pos - leafNodesOffset });
             else
                 queue.insert(std::pair<uint64_t, uint64_t>(nodeItem.offset, level - 1));
         }
@@ -349,9 +383,7 @@ uint64_t PackedRTree::size(const uint64_t numItems, const uint16_t nodeSize)
 
 void PackedRTree::streamWrite(const std::function<void(uint8_t *, size_t)> &writeData) {
 #if !CPL_IS_LSB
-    // Note: we should normally revert endianness after writing, but as we no longer
-    // use the data structures this is not needed.
-    for( size_t i = 0; i < static_cast<size_t>(_numItems); i++ )
+    for( size_t i = 0; i < static_cast<size_t>(_numNodes); i++ )
     {
         CPL_LSBPTR64(&_nodeItems[i].minX);
         CPL_LSBPTR64(&_nodeItems[i].minY);
@@ -361,6 +393,16 @@ void PackedRTree::streamWrite(const std::function<void(uint8_t *, size_t)> &writ
     }
 #endif
     writeData(reinterpret_cast<uint8_t *>(_nodeItems), static_cast<size_t>(_numNodes * sizeof(NodeItem)));
+#if !CPL_IS_LSB
+    for( size_t i = 0; i < static_cast<size_t>(_numNodes); i++ )
+    {
+        CPL_LSBPTR64(&_nodeItems[i].minX);
+        CPL_LSBPTR64(&_nodeItems[i].minY);
+        CPL_LSBPTR64(&_nodeItems[i].maxX);
+        CPL_LSBPTR64(&_nodeItems[i].maxY);
+        CPL_LSBPTR64(&_nodeItems[i].offset);
+    }
+#endif
 }
 
 NodeItem PackedRTree::getExtent() const { return _extent; }

@@ -38,7 +38,8 @@ Synopsis
             [-clipdstwhere expression]
             [-wrapdateline] [-datelineoffset val]
             [[-simplify tolerance] | [-segmentize max_dist]]
-            [-addfields] [-unsetFid]
+            [-makevalid]
+            [-addfields] [-unsetFid] [-emptyStrAsNull]
             [-relaxedFieldNameMatch] [-forceNullable] [-unsetDefault]
             [-fieldTypeToString All|(type1[,type2]*)] [-unsetFieldWidth]
             [-mapFieldType type1|All=type2[,type3=type4]*]
@@ -101,9 +102,10 @@ output coordinate system or even reprojecting the features during translation.
 
 .. option:: -dialect <dialect>
 
-    SQL dialect. In some cases can be used to use (unoptimized) OGR SQL instead
-    of the native SQL of an RDBMS by passing OGRSQL. The "SQLITE" dialect can
-    also be used with any datasource.
+    SQL dialect. In some cases can be used to use (unoptimized) :ref:`ogr_sql_dialect` instead
+    of the native SQL of an RDBMS by passing the ``OGRSQL`` dialect value.
+    The :ref:`sql_sqlite_dialect` dialect can be select with the ``SQLITE``
+    and ``INDIRECT_SQLITE`` dialect values, and this can be used with any datasource.
 
 .. option:: -where restricted_where
 
@@ -165,6 +167,9 @@ output coordinate system or even reprojecting the features during translation.
     with ``-nlt POLYGON``, the resulting polygon will break the Simple Features
     rules.
 
+    Starting with GDAL 3.0.5, ``-nlt CONVERT_TO_LINEAR`` and ``-nlt PROMOTE_TO_MULTI``
+    can be used simultaneously.
+
 .. option:: -dim <val>
 
     Force the coordinate dimension to val (valid values are ``XY``, ``XYZ``,
@@ -201,11 +206,11 @@ output coordinate system or even reprojecting the features during translation.
 .. option:: -preserve_fid
 
     Use the FID of the source features instead of letting the output driver
-    automatically assign a new one (for formats that require an FID).  If not
-    in append mode, this behaviour is the default if the output driver has
-    a FID layer creation option, un which case the name of the source FID
+    automatically assign a new one (for formats that require a FID). If not
+    in append mode, this behavior is the default if the output driver has
+    a FID layer creation option, in which case the name of the source FID
     column will be used and source feature IDs will be attempted to be
-    preserved. This behaviour can be disabled by setting ``-unsetFid``.
+    preserved. This behavior can be disabled by setting ``-unsetFid``.
 
 .. option:: -fid fid
 
@@ -229,7 +234,7 @@ output coordinate system or even reprojecting the features during translation.
 
 .. option:: -gt n
 
-    Group n features per transaction (default 20000). Increase the value for
+    Group n features per transaction (default 100 000). Increase the value for
     better performance when writing into DBMS drivers that have transaction
     support. ``n`` can be set to unlimited to load the data into a single
     transaction.
@@ -297,6 +302,14 @@ output coordinate system or even reprojecting the features during translation.
 .. option:: -segmentize <max_dist>
 
     Maximum distance between 2 nodes. Used to create intermediate points.
+
+.. option:: -makevalid
+
+    Run the :cpp:func:`OGRGeometry::MakeValid` operation, followed by
+    :cpp:func:`OGRGeometryFactory::removeLowerDimensionSubGeoms`, on geometries 
+    to ensure they are valid regarding the rules of the Simple Features specification.
+
+    .. versionadded: 3.1 (requires GEOS 3.8 or later)
 
 .. option:: -fieldTypeToString type1,...
 
@@ -395,9 +408,15 @@ output coordinate system or even reprojecting the features during translation.
 
 .. option:: -unsetFid
 
-    Can be specify to prevent the name of the source FID column and source
+    Can be specified to prevent the name of the source FID column and source
     feature IDs from being re-used for the target layer. This option can for
     example be useful if selecting source features with a ORDER BY clause.
+
+.. option:: -emptyStrAsNull
+
+    Treat empty string values as null.
+
+    .. versionadded:: 3.3
 
 .. option:: -nomd
 

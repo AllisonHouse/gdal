@@ -554,7 +554,10 @@ static bool ProcessError( CPLHTTPResult *psResult )
 /*      sufficient.                                                     */
 /* -------------------------------------------------------------------- */
     if( CPLGetLastErrorNo() != 0 )
+    {
+        CPLHTTPDestroyResult( psResult );
         return TRUE;
+    }
 
     return false;
 }
@@ -1689,7 +1692,7 @@ void GDALRegister_WCS()
     poDriver->SetDescription( "WCS" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "OGC Web Coverage Service" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_wcs.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/wcs.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_SUBDATASETS, "YES" );
 

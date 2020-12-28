@@ -56,7 +56,7 @@ def install_http_handler(handler_instance):
 
 
 class RequestResponse(object):
-    def __init__(self, method, path, code, headers=None, body=None, custom_method=None, expected_headers=None, expected_body=None, add_content_length_header=True):
+    def __init__(self, method, path, code, headers=None, body=None, custom_method=None, expected_headers=None, expected_body=None, add_content_length_header=True, unexpected_headers=[]):
         self.method = method
         self.path = path
         self.code = code
@@ -66,6 +66,7 @@ class RequestResponse(object):
         self.expected_headers = {} if expected_headers is None else expected_headers
         self.expected_body = expected_body
         self.add_content_length_header = add_content_length_header
+        self.unexpected_headers = unexpected_headers
 
 
 class FileHandler(object):
@@ -94,7 +95,7 @@ class FileHandler(object):
             end = len(filedata)
             if 'Range' in request.headers:
                 import re
-                res = re.search('bytes=(\d+)\-(\d+)', request.headers['Range'])
+                res = re.search(r'bytes=(\d+)\-(\d+)', request.headers['Range'])
                 if res:
                     res = res.groups()
                     start = int(res[0])
@@ -119,16 +120,16 @@ class SequentialHandler(object):
         assert self.req_count == len(self.req_resp), (self.req_count, len(self.req_resp))
         assert not self.req_resp_map
 
-    def add(self, method, path, code=None, headers=None, body=None, custom_method=None, expected_headers=None, expected_body=None, add_content_length_header=True):
+    def add(self, method, path, code=None, headers=None, body=None, custom_method=None, expected_headers=None, expected_body=None, add_content_length_header=True, unexpected_headers=[]):
         hdrs = {} if headers is None else headers
         expected_hdrs = {} if expected_headers is None else expected_headers
         assert not self.req_resp_map
-        self.req_resp.append(RequestResponse(method, path, code, hdrs, body, custom_method, expected_hdrs, expected_body, add_content_length_header))
+        self.req_resp.append(RequestResponse(method, path, code, hdrs, body, custom_method, expected_hdrs, expected_body, add_content_length_header, unexpected_headers))
 
-    def add_unordered(self, method, path, code=None, headers=None, body=None, custom_method=None, expected_headers=None, expected_body=None, add_content_length_header=True):
+    def add_unordered(self, method, path, code=None, headers=None, body=None, custom_method=None, expected_headers=None, expected_body=None, add_content_length_header=True, unexpected_headers=[]):
         hdrs = {} if headers is None else headers
         expected_hdrs = {} if expected_headers is None else expected_headers
-        self.req_resp_map[(method, path)] = RequestResponse(method, path, code, hdrs, body, custom_method, expected_hdrs, expected_body, add_content_length_header)
+        self.req_resp_map[(method, path)] = RequestResponse(method, path, code, hdrs, body, custom_method, expected_hdrs, expected_body, add_content_length_header, unexpected_headers)
 
     @staticmethod
     def _process_req_resp(req_resp, request):
@@ -144,6 +145,14 @@ class SequentialHandler(object):
                         request.send_header('Content-Length', 0)
                         request.end_headers()
                         return
+
+            for k in req_resp.unexpected_headers:
+                if k in request.headers:
+                    sys.stderr.write('Did not expect header: %s\n' % k)
+                    request.send_response(400)
+                    request.send_header('Content-Length', 0)
+                    request.end_headers()
+                    return
 
             if req_resp.expected_body:
                 content = request.rfile.read(int(request.headers['Content-Length']))
@@ -191,6 +200,9 @@ class SequentialHandler(object):
     def do_GET(self, request):
         self.process('GET', request)
 
+    def do_PATCH(self, request):
+        self.process('PATCH', request)
+
     def do_POST(self, request):
         self.process('POST', request)
 
@@ -226,6 +238,14 @@ class DispatcherHttpHandler(BaseHTTPRequestHandler):
             f.close()
 
         custom_handler.do_DELETE(self)
+
+    def do_PATCH(self):
+        if do_log:
+            f = open('/tmp/log.txt', 'a')
+            f.write('PATCH %s\n' % self.path)
+            f.close()
+
+        custom_handler.do_PATCH(self)
 
     def do_POST(self):
 
@@ -272,6 +292,14 @@ class GDAL_Handler(BaseHTTPRequestHandler):
         if do_log:
             f = open('/tmp/log.txt', 'a')
             f.write('DELETE %s\n' % self.path)
+            f.close()
+
+        self.send_error(404, 'File Not Found: %s' % self.path)
+
+    def do_PATCH(self):
+        if do_log:
+            f = open('/tmp/log.txt', 'a')
+            f.write('PATCH %s\n' % self.path)
             f.close()
 
         self.send_error(404, 'File Not Found: %s' % self.path)

@@ -34,12 +34,13 @@ sys.path.append('../pymod')
 
 from osgeo import gdal
 import gdaltest
+import pytest
 
 
 def test_ignfheightasciigrid_1():
 
     tst = gdaltest.GDALTest('IGNFHeightASCIIGrid',
-                            'ignfheightasciigrid_ar1.mnt', 1, 21)
+                            'ignfheightasciigrid/ignfheightasciigrid_ar1.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
@@ -47,7 +48,7 @@ def test_ignfheightasciigrid_1():
 def test_ignfheightasciigrid_2():
 
     tst = gdaltest.GDALTest('IGNFHeightASCIIGrid',
-                            'ignfheightasciigrid_ar2.mnt', 1, 21)
+                            'ignfheightasciigrid/ignfheightasciigrid_ar2.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
@@ -55,7 +56,7 @@ def test_ignfheightasciigrid_2():
 def test_ignfheightasciigrid_3():
 
     tst = gdaltest.GDALTest('IGNFHeightASCIIGrid',
-                            'ignfheightasciigrid_ar3.mnt', 1, 21)
+                            'ignfheightasciigrid/ignfheightasciigrid_ar3.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
@@ -63,7 +64,7 @@ def test_ignfheightasciigrid_3():
 def test_ignfheightasciigrid_4():
 
     tst = gdaltest.GDALTest('IGNFHeightASCIIGrid',
-                            'ignfheightasciigrid_ar4.mnt', 1, 21)
+                            'ignfheightasciigrid/ignfheightasciigrid_ar4.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
@@ -71,7 +72,7 @@ def test_ignfheightasciigrid_4():
 def test_ignfheightasciigrid_5():
 
     tst = gdaltest.GDALTest('IGNFHeightASCIIGrid',
-                            'ignfheightasciigrid_ar1_nocoords.mnt', 1, 21)
+                            'ignfheightasciigrid/ignfheightasciigrid_ar1_nocoords.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
@@ -79,7 +80,7 @@ def test_ignfheightasciigrid_5():
 def test_ignfheightasciigrid_6():
 
     tst = gdaltest.GDALTest(
-        'IGNFHeightASCIIGrid', 'ignfheightasciigrid_ar1_nocoords_noprec.mnt', 1, 21)
+        'IGNFHeightASCIIGrid', 'ignfheightasciigrid/ignfheightasciigrid_ar1_nocoords_noprec.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
@@ -87,12 +88,15 @@ def test_ignfheightasciigrid_6():
 def test_ignfheightasciigrid_7():
 
     tst = gdaltest.GDALTest(
-        'IGNFHeightASCIIGrid', 'ignfheightasciigrid_ar1_noprec.mnt', 1, 21)
+        'IGNFHeightASCIIGrid', 'ignfheightasciigrid/ignfheightasciigrid_ar1_noprec.mnt', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     return tst.testOpen(check_gt=gt, check_prj='WGS84')
 
 
 def test_ignfheightasciigrid_description_multiword_and_lf():
+
+    if gdaltest.is_travis_branch('mingw_w64'):
+        pytest.skip()
 
     filename = '/vsimem/ignfheightasciigrid_invalid'
     ok_content = b'2 3 49 50 1 1 1 0 1 0 -0. MULTI WORD\xC3\xA9\xC3\xA8\n1 2 3 4'
@@ -166,11 +170,11 @@ def test_ignfheightasciigrid_huge():
 def test_ignfheightasciigrid_gra():
 
     tst = gdaltest.GDALTest(
-        'IGNFHeightASCIIGrid', 'ignfheightasciigrid.gra', 1, 21)
+        'IGNFHeightASCIIGrid', 'ignfheightasciigrid/ignfheightasciigrid.gra', 1, 21)
     gt = (-152.125, 0.25, 0.0, -16.375, 0.0, -0.25)
     tst.testOpen(check_gt=gt, check_prj='WGS84')
 
-    ds = gdal.OpenEx('data/ignfheightasciigrid.gra', gdal.OF_RASTER)
+    ds = gdal.OpenEx('data/ignfheightasciigrid/ignfheightasciigrid.gra', gdal.OF_RASTER)
     assert ds.GetRasterBand(1).GetNoDataValue() == 9999
 
 

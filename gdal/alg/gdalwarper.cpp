@@ -1296,6 +1296,7 @@ GDALCloneWarpOptions( const GDALWarpOptions *psSrcOptions )
     COPY_MEM( padfSrcNoDataImag, double, psSrcOptions->nBandCount );
     COPY_MEM( padfDstNoDataReal, double, psSrcOptions->nBandCount );
     COPY_MEM( padfDstNoDataImag, double, psSrcOptions->nBandCount );
+    // cppcheck-suppress pointerSize
     COPY_MEM( papfnSrcPerBandValidityMaskFunc, GDALMaskFunc,
               psSrcOptions->nBandCount );
     psDstOptions->papSrcPerBandValidityMaskFuncArg = nullptr;
@@ -1582,6 +1583,8 @@ GDALSerializeWarpOptions( const GDALWarpOptions *psWO )
         pszAlgName = "Lanczos";
     else if( psWO->eResampleAlg == GRA_Average )
         pszAlgName = "Average";
+    else if( psWO->eResampleAlg == GRA_RMS )
+        pszAlgName = "RootMeanSquare";
     else if( psWO->eResampleAlg == GRA_Mode )
         pszAlgName = "Mode";
     else if( psWO->eResampleAlg == GRA_Max )
@@ -1594,6 +1597,8 @@ GDALSerializeWarpOptions( const GDALWarpOptions *psWO )
         pszAlgName = "Quartile1";
     else if( psWO->eResampleAlg == GRA_Q3 )
         pszAlgName = "Quartile3";
+    else if( psWO->eResampleAlg == GRA_Sum )
+        pszAlgName = "Sum";
     else
         pszAlgName = "Unknown";
 
@@ -1831,6 +1836,8 @@ GDALWarpOptions * CPL_STDCALL GDALDeserializeWarpOptions( CPLXMLNode *psTree )
         psWO->eResampleAlg = GRA_Lanczos;
     else if( EQUAL(pszValue, "Average") )
         psWO->eResampleAlg = GRA_Average;
+    else if( EQUAL(pszValue, "RootMeanSquare") )
+        psWO->eResampleAlg = GRA_RMS;
     else if( EQUAL(pszValue, "Mode") )
         psWO->eResampleAlg = GRA_Mode;
     else if( EQUAL(pszValue, "Maximum") )
@@ -1843,6 +1850,8 @@ GDALWarpOptions * CPL_STDCALL GDALDeserializeWarpOptions( CPLXMLNode *psTree )
         psWO->eResampleAlg = GRA_Q1;
     else if( EQUAL(pszValue, "Quartile3") )
         psWO->eResampleAlg = GRA_Q3;
+    else if( EQUAL(pszValue, "Sum") )
+        psWO->eResampleAlg = GRA_Sum;
     else if( EQUAL(pszValue, "Default") )
         /* leave as is */;
     else

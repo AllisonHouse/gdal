@@ -180,6 +180,15 @@ int VRTPansharpenedDataset::CloseDependentDatasets()
     }
     nBands = 0;
 
+    // Destroy the overviews before m_poPansharpener as they might reference
+    // files that are in m_apoDatasetsToClose.
+    for( size_t i=0; i<m_apoOverviewDatasets.size();i++)
+    {
+        bHasDroppedRef = TRUE;
+        delete m_apoOverviewDatasets[i];
+    }
+    m_apoOverviewDatasets.resize(0);
+
     if( m_poPansharpener != nullptr )
     {
         // Delete the pansharper object before closing the dataset
@@ -197,13 +206,6 @@ int VRTPansharpenedDataset::CloseDependentDatasets()
         }
         m_apoDatasetsToClose.resize(0);
     }
-
-    for( size_t i=0; i<m_apoOverviewDatasets.size();i++)
-    {
-        bHasDroppedRef = TRUE;
-        delete m_apoOverviewDatasets[i];
-    }
-    m_apoOverviewDatasets.resize(0);
 
     if( poMainDatasetLocal != this )
     {
@@ -1066,6 +1068,11 @@ CPLErr VRTPansharpenedDataset::XMLInit( CPLXMLNode *psTree, const char *pszVRTPa
     eErr = m_poPansharpener->Initialize(psPanOptions);
     if( eErr != CE_None )
     {
+        // Delete the pansharper object before closing the dataset
+        // because it may have warped the bands into an intermediate VRT
+        delete m_poPansharpener;
+        m_poPansharpener = nullptr;
+
         // Close in reverse order (VRT firsts and real datasets after)
         for( int i = static_cast<int>( m_apoDatasetsToClose.size() ) - 1;
              i >= 0;
@@ -1074,9 +1081,6 @@ CPLErr VRTPansharpenedDataset::XMLInit( CPLXMLNode *psTree, const char *pszVRTPa
             GDALClose(m_apoDatasetsToClose[i]);
         }
         m_apoDatasetsToClose.resize(0);
-
-        delete m_poPansharpener;
-        m_poPansharpener = nullptr;
     }
     GDALDestroyPansharpenOptions(psPanOptions);
 

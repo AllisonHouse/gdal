@@ -66,16 +66,20 @@ static void update_buffer_size(void* obj, char* data, char* data_aligned, size_t
 
 
   have_warned = 0
-  def deprecation_warn(module):
+  def deprecation_warn(module, sub_package=None):
     global have_warned
 
     if have_warned == 1:
         return
 
     have_warned = 1
+    if sub_package:
+        new_module = sub_package+'.'+module
+    else:
+        new_module = module
 
     from warnings import warn
-    warn('%s.py was placed in a namespace, it is now available as osgeo.%s' % (module,module),
+    warn('%s.py was placed in a namespace, it is now available as osgeo.%s' % (module, new_module),
          DeprecationWarning)
 
 
@@ -343,6 +347,17 @@ void wrapper_VSIGetMemFileBuffer(const char *utf8_path, GByte **out, vsi_l_offse
                      GDALRIOResampleAlg resample_alg = GRIORA_NearestNeighbour,
                      GDALProgressFunc callback = NULL,
                      void* callback_data=NULL) {
+    // This check is a bit too late. resample_alg should already have been
+    // validated, so we are a bit in undefined behavior land, but compilers
+    // should hopefully do the right thing
+    if( static_cast<int>(resample_alg) < 0 ||
+        ( static_cast<int>(resample_alg) >= static_cast<int>(GRIORA_RESERVED_START) &&
+          static_cast<int>(resample_alg) <= static_cast<int>(GRIORA_RESERVED_END) ) ||
+        static_cast<int>(resample_alg) > static_cast<int>(GRIORA_LAST) )
+    {
+        CPLError(CE_Failure, CPLE_IllegalArg, "Invalid value for resample_alg");
+        return CE_Failure;
+    }
     int nxsize = (buf_xsize==0) ? static_cast<int>(xsize) : *buf_xsize;
     int nysize = (buf_ysize==0) ? static_cast<int>(ysize) : *buf_ysize;
     GDALDataType ntype  = (buf_type==0) ? GDALGetRasterDataType(self)
@@ -642,7 +657,7 @@ void wrapper_VSIGetMemFileBuffer(const char *utf8_path, GByte **out, vsi_l_offse
 %apply ( void **outPythonObject ) { (void **buf ) };
 %apply ( int *optional_int ) {(int*)};
 %apply ( GIntBig *optional_GIntBig ) {(GIntBig*)};
-CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
+CPLErr ReadRaster1( double xoff, double yoff, double xsize, double ysize,
                     void **buf,
                     int *buf_xsize = 0, int *buf_ysize = 0,
                     GDALDataType *buf_type = 0,
@@ -652,6 +667,17 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
                     GDALProgressFunc callback = NULL,
                     void* callback_data=NULL )
 {
+    // This check is a bit too late. resample_alg should already have been
+    // validated, so we are a bit in undefined behavior land, but compilers
+    // should hopefully do the right thing
+    if( static_cast<int>(resample_alg) < 0 ||
+        ( static_cast<int>(resample_alg) >= static_cast<int>(GRIORA_RESERVED_START) &&
+          static_cast<int>(resample_alg) <= static_cast<int>(GRIORA_RESERVED_END) ) ||
+        static_cast<int>(resample_alg) > static_cast<int>(GRIORA_LAST) )
+    {
+        CPLError(CE_Failure, CPLE_IllegalArg, "Invalid value for resample_alg");
+        return CE_Failure;
+    }
     int nxsize = (buf_xsize==0) ? xsize : *buf_xsize;
     int nysize = (buf_ysize==0) ? ysize : *buf_ysize;
     GDALDataType ntype;
@@ -736,7 +762,22 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
     sExtraArg.eResampleAlg = resample_alg;
     sExtraArg.pfnProgress = callback;
     sExtraArg.pProgressData = callback_data;
-    CPLErr eErr = GDALDatasetRasterIOEx(self, GF_Read, xoff, yoff, xsize, ysize,
+
+    int nXOff = (int)(xoff + 0.5);
+    int nYOff = (int)(yoff + 0.5);
+    int nXSize = (int)(xsize + 0.5);
+    int nYSize = (int)(ysize + 0.5);
+    if( fabs(xoff-nXOff) > 1e-8 || fabs(yoff-nYOff) > 1e-8 ||
+        fabs(xsize-nXSize) > 1e-8 || fabs(ysize-nYSize) > 1e-8 )
+    {
+        sExtraArg.bFloatingPointWindowValidity = TRUE;
+        sExtraArg.dfXOff = xoff;
+        sExtraArg.dfYOff = yoff;
+        sExtraArg.dfXSize = xsize;
+        sExtraArg.dfYSize = ysize;
+    }
+
+    CPLErr eErr = GDALDatasetRasterIOEx(self, GF_Read, nXOff, nYOff, nXSize, nYSize,
                                (void*) data_aligned, nxsize, nysize, ntype,
                                band_list, pband_list, pixel_space, line_space, band_space,
                                &sExtraArg );
@@ -1032,6 +1073,13 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
       from osgeo import gdalnumeric
       return gdalnumeric.MDArrayReadAsArray(self, array_start_idx, count, array_step, buffer_datatype, buf_obj)
 
+  def AdviseRead(self, array_start_idx = None, count = None):
+      if not array_start_idx:
+        array_start_idx = [0] * self.GetDimensionCount()
+      if not count:
+        count = [ (self.GetDimensions()[i].GetSize() - array_start_idx[i]) for i in range (self.GetDimensionCount()) ]
+      return _gdal.MDArray_AdviseRead(self, array_start_idx, count)
+
   def __getitem__(self, item):
 
         def stringify(v):
@@ -1108,6 +1156,32 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
 
       from osgeo import gdalnumeric
       return gdalnumeric.MDArrayWriteArray(self, array, array_start_idx, array_step)
+
+  def ReadAsMaskedArray(self,
+                  array_start_idx = None,
+                  count = None,
+                  array_step = None):
+      """ Return a numpy masked array of ReadAsArray() with GetMask() """
+      import numpy
+      mask = self.GetMask()
+      if mask is not None:
+          array = self.ReadAsArray(array_start_idx, count, array_step)
+          mask_array = mask.ReadAsArray(array_start_idx, count, array_step)
+          bool_array = ~mask_array.astype(numpy.bool)
+          return numpy.ma.array(array, mask=bool_array)
+      else:
+          return numpy.ma.array(self.ReadAsArray(array_start_idx, count, array_step), mask=None)
+
+  def GetShape(self):
+    """ Return the shape of the array """
+    if not self.GetDimensionCount():
+      return None
+    shp = ()
+    for dim in self.GetDimensions():
+      shp += (dim.GetSize(),)
+    return shp
+
+  shape = property(fget=GetShape, doc='Returns the shape of the array.')
 
 %}
 }
@@ -1188,6 +1262,8 @@ def InfoOptions(options=None, format='text', deserialize=True,
         new_options = options
         if format == 'json':
             new_options += ['-json']
+        if '-json' in new_options:
+            format = 'json'
         if computeMinMax:
             new_options += ['-mm']
         if reportHistograms:
@@ -1355,8 +1431,11 @@ def TranslateOptions(options=None, format=None,
         elif widthPct != 0 and heightPct != 0:
             new_options += ['-outsize', str(widthPct) + '%%', str(heightPct) + '%%']
         if creationOptions is not None:
-            for opt in creationOptions:
-                new_options += ['-co', opt]
+            if isinstance(creationOptions, str):
+                new_options += ['-co', creationOptions]
+            else:
+                for opt in creationOptions:
+                    new_options += ['-co', opt]
         if srcWin is not None:
             new_options += ['-srcwin', _strHighPrec(srcWin[0]), _strHighPrec(srcWin[1]), _strHighPrec(srcWin[2]), _strHighPrec(srcWin[3])]
         if strict:
@@ -1374,8 +1453,11 @@ def TranslateOptions(options=None, format=None,
         if outputBounds is not None:
             new_options += ['-a_ullr', _strHighPrec(outputBounds[0]), _strHighPrec(outputBounds[1]), _strHighPrec(outputBounds[2]), _strHighPrec(outputBounds[3])]
         if metadataOptions is not None:
-            for opt in metadataOptions:
-                new_options += ['-mo', opt]
+            if isinstance(metadataOptions, str):
+                new_options += ['-mo', metadataOptions]
+            else:
+                for opt in metadataOptions:
+                    new_options += ['-mo', opt]
         if outputSRS is not None:
             new_options += ['-a_srs', str(outputSRS)]
         if nogcp:
@@ -1408,6 +1490,8 @@ def TranslateOptions(options=None, format=None,
                 new_options += ['-r', 'lanczos']
             elif resampleAlg == gdalconst.GRA_Average:
                 new_options += ['-r', 'average']
+            elif resampleAlg == gdalconst.GRA_RMS:
+                new_options += ['-r', 'rms']
             elif resampleAlg == gdalconst.GRA_Mode:
                 new_options += ['-r', 'mode']
             else:
@@ -1548,6 +1632,8 @@ def WarpOptions(options=None, format=None,
                 new_options += ['-r', 'lanczos']
             elif resampleAlg == gdalconst.GRIORA_Average:
                 new_options += ['-r', 'average']
+            elif resampleAlg == gdalconst.GRIORA_RMS:
+                new_options += ['-r', 'rms']
             elif resampleAlg == gdalconst.GRIORA_Mode:
                 new_options += ['-r', 'mode']
             elif resampleAlg == gdalconst.GRIORA_Gauss:
@@ -1649,6 +1735,7 @@ def VectorTranslateOptions(options=None, format=None,
          SQLStatement=None, SQLDialect=None, where=None, selectFields=None,
          addFields=False,
          forceNullable=False,
+         emptyStrAsNull=False,
          spatFilter=None, spatSRS=None,
          datasetCreationOptions=None,
          layerCreationOptions=None,
@@ -1657,6 +1744,7 @@ def VectorTranslateOptions(options=None, format=None,
          geometryType=None,
          dim=None,
          segmentizeMaxDist= None,
+         makeValid=False,
          zField=None,
          skipFailures=False,
          limit=None,
@@ -1676,6 +1764,7 @@ def VectorTranslateOptions(options=None, format=None,
           selectFields --- list of fields to select
           addFields --- whether to add new fields found in source layers (to be used with accessMode == 'append')
           forceNullable --- whether to drop NOT NULL constraints on newly created fields
+          emptyStrAsNull --- whether to treat empty string values as NULL
           spatFilter --- spatial filter as (minX, minY, maxX, maxY) bounding box
           spatSRS --- SRS in which the spatFilter is expressed. If not specified, it is assumed to be the one of the layer(s)
           datasetCreationOptions --- list of dataset creation options
@@ -1685,6 +1774,7 @@ def VectorTranslateOptions(options=None, format=None,
           geometryType --- output layer geometry type ('POINT', ....)
           dim --- output dimension ('XY', 'XYZ', 'XYM', 'XYZM', 'layer_dim')
           segmentizeMaxDist --- maximum distance between consecutive nodes of a line geometry
+          makeValid --- run MakeValid() on geometries
           zField --- name of field to use to set the Z component of geometries
           skipFailures --- whether to skip failures
           limit -- maximum number of features to read per layer
@@ -1727,6 +1817,8 @@ def VectorTranslateOptions(options=None, format=None,
             new_options += ['-addfields']
         if forceNullable:
             new_options += ['-forceNullable']
+        if emptyStrAsNull:
+            new_options += ['-emptyStrAsNull']
         if selectFields is not None:
             val = ''
             for item in selectFields:
@@ -1748,6 +1840,8 @@ def VectorTranslateOptions(options=None, format=None,
                     new_options += [lyr]
         if segmentizeMaxDist is not None:
             new_options += ['-segmentize', str(segmentizeMaxDist)]
+        if makeValid:
+            new_options += ['-makevalid']
         if spatFilter is not None:
             new_options += ['-spat', str(spatFilter[0]), str(spatFilter[1]), str(spatFilter[2]), str(spatFilter[3])]
         if spatSRS is not None:
@@ -1755,7 +1849,11 @@ def VectorTranslateOptions(options=None, format=None,
         if layerName is not None:
             new_options += ['-nln', layerName]
         if geometryType is not None:
-            new_options += ['-nlt', geometryType]
+            if _is_str_or_unicode(geometryType):
+                new_options += ['-nlt', geometryType]
+            else:
+                for opt in geometryType:
+                    new_options += ['-nlt', opt]
         if dim is not None:
             new_options += ['-dim', dim]
         if zField is not None:
@@ -1796,7 +1894,7 @@ def DEMProcessingOptions(options=None, colorFilename=None, format=None,
               zFactor=None, scale=None, azimuth=None, altitude=None,
               combined=False, multiDirectional=False, igor=False,
               slopeFormat=None, trigonometric=False, zeroForFlat=False,
-              addAlpha=None,
+              addAlpha=None, colorSelection=None,
               callback=None, callback_data=None):
     """ Create a DEMProcessingOptions() object that can be passed to gdal.DEMProcessing()
         Keyword arguments are :
@@ -1818,6 +1916,7 @@ def DEMProcessingOptions(options=None, colorFilename=None, format=None,
           trigonometric --- (aspect only) whether to return trigonometric angle instead of azimuth. Thus 0deg means East, 90deg North, 180deg West, 270deg South.
           zeroForFlat --- (aspect only) whether to return 0 for flat areas with slope=0, instead of -9999.
           addAlpha --- adds an alpha band to the output file (only for processing = 'color-relief')
+          colorSelection --- (color-relief only) Determines how color entries are selected from an input value. Can be "nearest_color_entry", "exact_color_entry" or "linear_interpolation". Defaults to "linear_interpolation"
           callback --- callback method
           callback_data --- user data for callback
     """
@@ -1857,6 +1956,15 @@ def DEMProcessingOptions(options=None, colorFilename=None, format=None,
             new_options += ['-trigonometric']
         if zeroForFlat:
             new_options += ['-zero_for_flat']
+        if colorSelection is not None:
+            if colorSelection == 'nearest_color_entry':
+                new_options += ['-nearest_color_entry']
+            elif colorSelection == 'exact_color_entry':
+                new_options += ['-exact_color_entry']
+            elif colorSelection == 'linear_interpolation':
+                pass
+            else:
+                raise ValueError("Unsupported value for colorSelection")
         if addAlpha:
             new_options += ['-alpha']
 
@@ -2065,6 +2173,7 @@ def RasterizeOptions(options=None, format=None,
          bands=None, inverse=False, allTouched=False,
          burnValues=None, attribute=None, useZ=False, layers=None,
          SQLStatement=None, SQLDialect=None, where=None, optim=None,
+         add=None,
          callback=None, callback_data=None):
     """ Create a RasterizeOptions() object that can be passed to gdal.Rasterize()
         Keyword arguments are :
@@ -2091,6 +2200,8 @@ def RasterizeOptions(options=None, format=None,
           SQLStatement --- SQL statement to apply to the source dataset
           SQLDialect --- SQL dialect ('OGRSQL', 'SQLITE', ...)
           where --- WHERE clause to apply to source layer(s)
+          optim --- optimization mode ('RASTER', 'VECTOR')
+          add --- set to True to use additive mode instead of replace when burning values
           callback --- callback method
           callback_data --- user data for callback
     """
@@ -2161,6 +2272,8 @@ def RasterizeOptions(options=None, format=None,
             new_options += ['-where', str(where)]
         if optim is not None:
             new_options += ['-optim', str(optim)]
+        if add:
+            new_options += ['-add']
 
     return (GDALRasterizeOptions(new_options), callback, callback_data)
 
@@ -2255,6 +2368,8 @@ def BuildVRTOptions(options=None,
                 new_options += ['-r', 'lanczos']
             elif resampleAlg == gdalconst.GRIORA_Average:
                 new_options += ['-r', 'average']
+            elif resampleAlg == gdalconst.GRIORA_RMS:
+                new_options += ['-r', 'rms']
             elif resampleAlg == gdalconst.GRIORA_Mode:
                 new_options += ['-r', 'mode']
             elif resampleAlg == gdalconst.GRIORA_Gauss:

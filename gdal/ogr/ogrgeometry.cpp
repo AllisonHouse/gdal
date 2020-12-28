@@ -790,6 +790,10 @@ OGRwkbGeometryType OGRGeometry::getIsoGeometryType() const
  * \brief Modify the geometry such it has no segment longer then the
  * given distance.
  *
+ * This method modifies the geometry to add intermediate vertices if necessary
+ * so that the maximum length between 2 consecutive vertices is lower than
+ * dfMaxLength.
+ *
  * Interpolated points will have Z and M values (if needed) set to 0.
  * Distance computation is performed in 2d only
  *
@@ -1960,7 +1964,7 @@ const char *OGR_G_GetGeometryName( OGRGeometryH hGeom )
  * This function is the same as the CPP method OGRGeometry::clone().
  *
  * @param hGeom handle on the geometry to clone from.
- * @return an handle on the copy of the geometry with the spatial
+ * @return a handle on the copy of the geometry with the spatial
  * reference system as the original.
  */
 
@@ -3577,6 +3581,9 @@ static OGRBoolean OGRGEOSBooleanPredicate(
  *
  * Already-valid geometries are cloned without further intervention.
  *
+ * Running OGRGeometryFactory::removeLowerDimensionSubGeoms() as a post-processing
+ * step is often desired.
+ *
  * This method is the same as the C function OGR_G_MakeValid().
  *
  * This function is built on the GEOS >= 3.8 library, check it for the definition
@@ -4801,7 +4808,10 @@ OGRGeometry::Crosses( UNUSED_PARAMETER const OGRGeometry *poOtherGeom ) const
 
         sfcgal_geometry_t *poOther = OGRGeometry::OGRexportToSFCGAL(poOtherGeom);
         if (poOther == nullptr)
+        {
+            sfcgal_geometry_delete(poThis);
             return FALSE;
+        }
 
         int res = sfcgal_geometry_intersects_3d(poThis, poOther);
 
@@ -5197,7 +5207,7 @@ OGRErr OGRGeometry::Centroid( OGRPoint *poPoint ) const
             return OGRERR_FAILURE;
         }
 
-        if( poCentroidGeom != nullptr && getSpatialReference() != nullptr )
+        if( getSpatialReference() != nullptr )
             poCentroidGeom->assignSpatialReference(getSpatialReference());
 
         OGRPoint *poCentroid = poCentroidGeom->toPoint();
@@ -5340,7 +5350,7 @@ OGRGeometryH OGR_G_PointOnSurface( OGRGeometryH hGeom )
             return nullptr;
         }
 
-        if( poInsidePointGeom != nullptr && poThis->getSpatialReference() != nullptr )
+        if( poThis->getSpatialReference() != nullptr )
             poInsidePointGeom->
                 assignSpatialReference(poThis->getSpatialReference());
 
@@ -5853,12 +5863,14 @@ int OGRHasPreparedGeometrySupport()
  *
  * To free with OGRDestroyPreparedGeometry()
  *
- * @param poGeom input geometry to prepare.
+ * @param hGeom input geometry to prepare.
  * @return handle to a prepared geometry.
+ * @since GDAL 3.3
  */
-OGRPreparedGeometry* OGRCreatePreparedGeometry( UNUSED_IF_NO_GEOS const OGRGeometry* poGeom )
+OGRPreparedGeometryH OGRCreatePreparedGeometry( UNUSED_IF_NO_GEOS OGRGeometryH hGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
+    OGRGeometry* poGeom = OGRGeometry::FromHandle(hGeom);
     GEOSContextHandle_t hGEOSCtxt = OGRGeometry::createGEOSContext();
     GEOSGeom hGEOSGeom = poGeom->exportToGEOS(hGEOSCtxt);
     if( hGEOSGeom == nullptr )
@@ -5890,17 +5902,18 @@ OGRPreparedGeometry* OGRCreatePreparedGeometry( UNUSED_IF_NO_GEOS const OGRGeome
 /************************************************************************/
 
 /** Destroys a prepared geometry.
- * @param poPreparedGeom preprated geometry.
+ * @param hPreparedGeom preprated geometry.
+ * @since GDAL 3.3
  */
-void OGRDestroyPreparedGeometry( UNUSED_IF_NO_GEOS OGRPreparedGeometry* poPreparedGeom )
+void OGRDestroyPreparedGeometry( UNUSED_IF_NO_GEOS OGRPreparedGeometryH hPreparedGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
-    if( poPreparedGeom != nullptr )
+    if( hPreparedGeom != nullptr )
     {
-        GEOSPreparedGeom_destroy_r(poPreparedGeom->hGEOSCtxt, poPreparedGeom->poPreparedGEOSGeom);
-        GEOSGeom_destroy_r( poPreparedGeom->hGEOSCtxt, poPreparedGeom->hGEOSGeom );
-        OGRGeometry::freeGEOSContext( poPreparedGeom->hGEOSCtxt );
-        delete poPreparedGeom;
+        GEOSPreparedGeom_destroy_r(hPreparedGeom->hGEOSCtxt, hPreparedGeom->poPreparedGEOSGeom);
+        GEOSGeom_destroy_r( hPreparedGeom->hGEOSCtxt, hPreparedGeom->hGEOSGeom );
+        OGRGeometry::freeGEOSContext( hPreparedGeom->hGEOSCtxt );
+        delete hPreparedGeom;
     }
 #endif
 }
@@ -5910,28 +5923,30 @@ void OGRDestroyPreparedGeometry( UNUSED_IF_NO_GEOS OGRPreparedGeometry* poPrepar
 /************************************************************************/
 
 /** Returns whether a prepared geometry intersects with a geometry.
- * @param poPreparedGeom prepared geometry.
- * @param poOtherGeom other geometry.
+ * @param hPreparedGeom prepared geometry.
+ * @param hOtherGeom other geometry.
  * @return TRUE or FALSE.
+ * @since GDAL 3.3
  */
 int OGRPreparedGeometryIntersects(
-    UNUSED_IF_NO_GEOS const OGRPreparedGeometry* poPreparedGeom,
-    UNUSED_IF_NO_GEOS const OGRGeometry* poOtherGeom )
+    UNUSED_IF_NO_GEOS const OGRPreparedGeometryH hPreparedGeom,
+    UNUSED_IF_NO_GEOS const OGRGeometryH hOtherGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
-    if( poPreparedGeom == nullptr || poOtherGeom == nullptr )
+    OGRGeometry* poOtherGeom = OGRGeometry::FromHandle(hOtherGeom);
+    if( hPreparedGeom == nullptr || poOtherGeom == nullptr )
         return FALSE;
 
     GEOSGeom hGEOSOtherGeom =
-        poOtherGeom->exportToGEOS(poPreparedGeom->hGEOSCtxt);
+        poOtherGeom->exportToGEOS(hPreparedGeom->hGEOSCtxt);
     if( hGEOSOtherGeom == nullptr )
         return FALSE;
 
     const bool bRet = CPL_TO_BOOL(
-        GEOSPreparedIntersects_r(poPreparedGeom->hGEOSCtxt,
-                                 poPreparedGeom->poPreparedGEOSGeom,
+        GEOSPreparedIntersects_r(hPreparedGeom->hGEOSCtxt,
+                                 hPreparedGeom->poPreparedGEOSGeom,
                                  hGEOSOtherGeom));
-    GEOSGeom_destroy_r( poPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
+    GEOSGeom_destroy_r( hPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
 
     return bRet;
 #else
@@ -5940,28 +5955,29 @@ int OGRPreparedGeometryIntersects(
 }
 
 /** Returns whether a prepared geometry contains a geometry.
- * @param poPreparedGeom prepared geometry.
- * @param poOtherGeom other geometry.
+ * @param hPreparedGeom prepared geometry.
+ * @param hOtherGeom other geometry.
  * @return TRUE or FALSE.
  */
 int OGRPreparedGeometryContains(
-    UNUSED_IF_NO_GEOS const OGRPreparedGeometry* poPreparedGeom,
-    UNUSED_IF_NO_GEOS const OGRGeometry* poOtherGeom )
+    UNUSED_IF_NO_GEOS const OGRPreparedGeometryH hPreparedGeom,
+    UNUSED_IF_NO_GEOS const OGRGeometryH hOtherGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
-    if( poPreparedGeom == nullptr || poOtherGeom == nullptr )
+    OGRGeometry* poOtherGeom = OGRGeometry::FromHandle(hOtherGeom);
+    if( hPreparedGeom == nullptr || poOtherGeom == nullptr )
         return FALSE;
 
     GEOSGeom hGEOSOtherGeom =
-        poOtherGeom->exportToGEOS(poPreparedGeom->hGEOSCtxt);
+        poOtherGeom->exportToGEOS(hPreparedGeom->hGEOSCtxt);
     if( hGEOSOtherGeom == nullptr )
         return FALSE;
 
     const bool bRet = CPL_TO_BOOL(
-        GEOSPreparedContains_r(poPreparedGeom->hGEOSCtxt,
-                               poPreparedGeom->poPreparedGEOSGeom,
+        GEOSPreparedContains_r(hPreparedGeom->hGEOSCtxt,
+                               hPreparedGeom->poPreparedGEOSGeom,
                                hGEOSOtherGeom));
-    GEOSGeom_destroy_r( poPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
+    GEOSGeom_destroy_r( hPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
 
     return bRet;
 #else
@@ -6133,18 +6149,6 @@ char* OGRGeometryToHexEWKB( OGRGeometry * poGeometry, int nSRSId,
 
     return pszTextBuf;
 }
-
-/**
- * \fn void OGRGeometry::segmentize(double dfMaxLength);
- *
- * \brief Add intermediate vertices to a geometry.
- *
- * This method modifies the geometry to add intermediate vertices if necessary
- * so that the maximum length between 2 consecutive vertices is lower than
- * dfMaxLength.
- *
- * @param dfMaxLength maximum length between 2 consecutive vertices.
- */
 
 /************************************************************************/
 /*                       importPreambleFromWkb()                       */
