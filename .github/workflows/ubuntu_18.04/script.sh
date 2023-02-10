@@ -4,18 +4,22 @@ set -e
 
 export PYTEST="python3 -m pytest -vv -p no:sugar --color=no"
 
-(cd autotest/cpp && make quick_test)
-# Compile and test vsipreload
-(cd autotest/cpp && make vsipreload.so)
+(cd build && make quicktest)
 
 # install pip and use it to install test dependencies
 pip3 install -U -r autotest/requirements.txt
 
 # Run all the Python autotests
+cd build
 
 # Run ogr_fgdb test in isolation due to likely conflict with libxml2
 (cd autotest/ogr && $PYTEST ogr_fgdb.py)
 rm autotest/ogr/ogr_fgdb.py
+
+# Test /vsiaz/ against the Azurite simulator
+export AZURITE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${IP}:10000/devstoreaccount1;"
+AZURE_STORAGE_CONNECTION_STRING=${AZURITE_STORAGE_CONNECTION_STRING} python3 -c "from osgeo import gdal; import sys; sys.exit(gdal.Mkdir('/vsiaz/mycontainer', 0o755))"
+(cd autotest/gcore && AZURE_STORAGE_CONNECTION_STRING=${AZURITE_STORAGE_CONNECTION_STRING} AZ_RESOURCE=mycontainer $PYTEST vsiaz_real_instance_manual.py)
 
 # MySQL 8
 (cd autotest/ogr && OGR_MYSQL_CONNECTION_STRING=mysql:test,user=root,password=passwd,port=33060,host=$IP $PYTEST ogr_mysql.py)

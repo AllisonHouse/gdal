@@ -31,9 +31,9 @@
 
 import threading
 
+import pytest
 
 from osgeo import gdal
-import pytest
 
 
 def my_error_handler(err_type, err_no, err_msg):
@@ -43,43 +43,35 @@ def my_error_handler(err_type, err_no, err_msg):
 
 def thread_test_1_worker(args_dict):
     for i in range(1000):
-        ds = gdal.Open('data/byte.tif')
+        ds = gdal.Open("data/byte.tif")
         if (i % 2) == 0:
             if ds.GetRasterBand(1).Checksum() != 4672:
-                args_dict['ret'] = False
+                args_dict["ret"] = False
         else:
             ds.GetRasterBand(1).ReadAsArray()
     for i in range(1000):
         gdal.PushErrorHandler(my_error_handler)
-        ds = gdal.Open('i_dont_exist')
+        ds = gdal.Open("i_dont_exist")
         gdal.PopErrorHandler()
 
 
 def test_thread_test_1():
 
-    try:
-        from osgeo import gdalnumeric
-        gdalnumeric.zeros
-    except (ImportError, AttributeError):
-        pytest.skip()
+    pytest.importorskip("numpy")
 
     threads = []
     args_array = []
     for i in range(4):
-        args_dict = {'ret': True}
+        args_dict = {"ret": True}
         t = threading.Thread(target=thread_test_1_worker, args=(args_dict,))
         args_array.append(args_dict)
         threads.append(t)
         t.start()
 
-    ret = 'success'
+    ret = True
     for i in range(4):
         threads[i].join()
         if not args_array[i]:
-            ret = 'fail'
+            ret = False
 
-    return ret
-
-
-
-
+    assert ret

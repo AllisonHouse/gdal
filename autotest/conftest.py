@@ -17,17 +17,38 @@ sys.path.insert(1, os.path.dirname(__file__))
 
 # These files may be non-importable, and don't contain tests anyway.
 # So we skip searching them during test collection.
-collect_ignore = ["kml_generate_test_files.py",
-                  "gdrivers/netcdf_cfchecks.py",
-                  "gdrivers/generate_bag.py",
-                  "gdrivers/generate_fits.py"]
+collect_ignore = [
+    "kml_generate_test_files.py",
+    "gdrivers/netcdf_cfchecks.py",
+    "gdrivers/generate_bag.py",
+    "gdrivers/generate_fits.py",
+]
+collect_ignore_glob = ["pymod/*.py"]
 
 # we set ECW to not resolve projection and datum strings to get 3.x behavior.
 gdal.SetConfigOption("ECW_DO_NOT_RESOLVE_DATUM_PROJECTION", "YES")
 
-if 'APPLY_LOCALE' in os.environ:
+if "APPLY_LOCALE" in os.environ:
     import locale
-    locale.setlocale(locale.LC_ALL, '')
+
+    locale.setlocale(locale.LC_ALL, "")
+
+
+def setup_proj_search_paths():
+    proj_grids_path = os.path.join(os.path.dirname(__file__), "proj_grids")
+    assert os.path.exists(proj_grids_path)
+
+    from osgeo import osr
+
+    proj_db_tmpdir = os.path.join(
+        os.path.dirname(__file__), "gcore", "tmp", "proj_db_tmpdir"
+    )
+    assert os.path.exists(proj_db_tmpdir)
+    assert os.path.exists(os.path.join(proj_db_tmpdir, "proj.db"))
+    osr.SetPROJSearchPaths([proj_db_tmpdir, proj_grids_path])
+
+
+setup_proj_search_paths()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -44,10 +65,11 @@ def chdir_to_test_file(request):
     """
     old = os.getcwd()
 
-    os.chdir(os.path.dirname(request.module.__file__))
-    sys.path.insert(0, ".")
+    new_cwd = os.path.dirname(request.module.__file__)
+    os.chdir(new_cwd)
+    sys.path.insert(0, new_cwd)
     yield
-    if sys.path and sys.path[0] == ".":
+    if sys.path and sys.path[0] == new_cwd:
         sys.path.pop(0)
     os.chdir(old)
 
@@ -61,16 +83,16 @@ def pytest_collection_modifyitems(config, items):
 
     drivers_checked = {}
     for item in items:
-        for mark in item.iter_markers('require_driver'):
+        for mark in item.iter_markers("require_driver"):
             driver_name = mark.args[0]
             if driver_name not in drivers_checked:
                 driver = gdal.GetDriverByName(driver_name)
                 drivers_checked[driver_name] = bool(driver)
                 if driver:
                     # Store the driver on gdaltest module so test functions can assume it's there.
-                    setattr(gdaltest, '%s_drv' % driver_name.lower(), driver)
+                    setattr(gdaltest, "%s_drv" % driver_name.lower(), driver)
             if not drivers_checked[driver_name]:
                 item.add_marker(skip_driver_not_present)
-        if not gdal.GetConfigOption('RUN_ON_DEMAND'):
-            for mark in item.iter_markers('require_run_on_demand'):
+        if not gdal.GetConfigOption("RUN_ON_DEMAND"):
+            for mark in item.iter_markers("require_run_on_demand"):
                 item.add_marker(skip_run_on_demand_not_set)
