@@ -106,7 +106,7 @@ void GDALOpenInfoDeclareFileNotToOpen(const char *pszFilename,
         memcpy(fnto.pabyHeader, pabyHeader, nHeaderBytes);
         fnto.pabyHeader[nHeaderBytes] = 0;
         fnto.nHeaderBytes = nHeaderBytes;
-        (*pMapFNTO)[pszFilename] = fnto;
+        (*pMapFNTO)[pszFilename] = std::move(fnto);
     }
 }
 
@@ -182,7 +182,7 @@ GDALOpenInfo::GDALOpenInfo(const char *pszFilenameIn, int nOpenFlagsIn,
 /*      Ensure that C: is treated as C:\ so we can stat it on           */
 /*      Windows.  Similar to what is done in CPLStat().                 */
 /* -------------------------------------------------------------------- */
-#ifdef WIN32
+#ifdef _WIN32
     if (strlen(pszFilenameIn) == 2 && pszFilenameIn[1] == ':')
     {
         char szAltPath[10];
@@ -218,11 +218,13 @@ retry:  // TODO(schwehr): Stop using goto.
      * system */
     if (STARTS_WITH(pszFilename, "/vsizip/") ||
         STARTS_WITH(pszFilename, "/vsitar/") ||
-        STARTS_WITH(pszFilename, "/vsi7z/"))
+        STARTS_WITH(pszFilename, "/vsi7z/") ||
+        STARTS_WITH(pszFilename, "/vsirar/"))
     {
         const char *pszExt = CPLGetExtension(pszFilename);
         if (EQUAL(pszExt, "zip") || EQUAL(pszExt, "tar") ||
             EQUAL(pszExt, "gz") || EQUAL(pszExt, "7z") ||
+            EQUAL(pszExt, "rar") ||
             pszFilename[strlen(pszFilename) - 1] == '}'
 #ifdef DEBUG
             // For AFL, so that .cur_input is detected as the archive filename.
@@ -402,7 +404,12 @@ GDALOpenInfo::~GDALOpenInfo()
 /************************************************************************/
 
 /** Return sibling files.
- * @return sibling files. Ownership below to the object.
+ *
+ * If the list of sibling files has not already been established, it will be,
+ * unless the GDAL_DISABLE_READDIR_ON_OPEN configuration option has been set to
+ * YES or EMPTY_DIR when this instance was constructed.
+ *
+ * @return sibling files. Ownership belongs to "this".
  */
 char **GDALOpenInfo::GetSiblingFiles()
 {
@@ -484,4 +491,23 @@ int GDALOpenInfo::TryToIngest(int nBytes)
     VSIRewindL(fpL);
 
     return TRUE;
+}
+
+/************************************************************************/
+/*                       IsSingleAllowedDriver()                        */
+/************************************************************************/
+
+/** Returns true if the driver name is the single in the list of allowed
+ * drivers.
+ *
+ * @param pszDriverName Driver name to test.
+ * @return true if the driver name is the single in the list of allowed
+ * drivers.
+ * @since GDAL 3.10
+ */
+bool GDALOpenInfo::IsSingleAllowedDriver(const char *pszDriverName) const
+{
+    return papszAllowedDrivers && papszAllowedDrivers[0] &&
+           !papszAllowedDrivers[1] &&
+           EQUAL(papszAllowedDrivers[0], pszDriverName);
 }

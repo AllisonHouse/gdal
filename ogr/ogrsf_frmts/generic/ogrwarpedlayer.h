@@ -33,6 +33,7 @@
 #ifndef DOXYGEN_SKIP
 
 #include "ogrlayerdecorator.h"
+#include <memory>
 
 /************************************************************************/
 /*                           OGRWarpedLayer                             */
@@ -55,8 +56,10 @@ class OGRWarpedLayer : public OGRLayerDecorator
     static int ReprojectEnvelope(OGREnvelope *psEnvelope,
                                  OGRCoordinateTransformation *poCT);
 
-    OGRFeature *SrcFeatureToWarpedFeature(OGRFeature *poFeature);
-    OGRFeature *WarpedFeatureToSrcFeature(OGRFeature *poFeature);
+    std::unique_ptr<OGRFeature>
+    SrcFeatureToWarpedFeature(std::unique_ptr<OGRFeature> poFeature);
+    std::unique_ptr<OGRFeature>
+    WarpedFeatureToSrcFeature(std::unique_ptr<OGRFeature> poFeature);
 
   public:
     OGRWarpedLayer(
@@ -82,6 +85,11 @@ class OGRWarpedLayer : public OGRLayerDecorator
     virtual OGRErr ISetFeature(OGRFeature *poFeature) override;
     virtual OGRErr ICreateFeature(OGRFeature *poFeature) override;
     virtual OGRErr IUpsertFeature(OGRFeature *poFeature) override;
+    OGRErr IUpdateFeature(OGRFeature *poFeature, int nUpdatedFieldsCount,
+                          const int *panUpdatedFieldsIdx,
+                          int nUpdatedGeomFieldsCount,
+                          const int *panUpdatedGeomFieldsIdx,
+                          bool bUpdateStyleString) override;
 
     virtual OGRFeatureDefn *GetLayerDefn() override;
 

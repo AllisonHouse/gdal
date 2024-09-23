@@ -37,6 +37,7 @@
 
 #include "cpl_conv.h"
 #include "cpl_error.h"
+#include "cpl_time.h"
 #include "json.h"
 // #include "json_object.h"
 // #include "json_tokener.h"
@@ -48,6 +49,7 @@
 #include "ogr_geojson.h"
 #include "ogrgeojsonreader.h"
 #include "ogrgeojsonutils.h"
+
 // #include "symbol_renames.h"
 
 /************************************************************************/
@@ -119,9 +121,39 @@ void OGRESRIJSONReader::ReadLayers(OGRGeoJSONDataSource *poDS,
     }
 
     auto eGeomType = OGRESRIJSONGetGeometryType(poGJObject_);
-    if (eGeomType == wkbNone && poSRS != nullptr)
+    if (eGeomType == wkbNone)
     {
-        eGeomType = wkbUnknown;
+        if (poSRS)
+        {
+            eGeomType = wkbUnknown;
+        }
+        else
+        {
+            json_object *poObjFeatures =
+                OGRGeoJSONFindMemberByName(poGJObject_, "features");
+            if (poObjFeatures &&
+                json_type_array == json_object_get_type(poObjFeatures))
+            {
+                const auto nFeatures = json_object_array_length(poObjFeatures);
+                for (auto i = decltype(nFeatures){0}; i < nFeatures; ++i)
+                {
+                    json_object *poObjFeature =
+                        json_object_array_get_idx(poObjFeatures, i);
+                    if (poObjFeature != nullptr &&
+                        json_object_get_type(poObjFeature) == json_type_object)
+                    {
+                        if (auto poObjGeometry = OGRGeoJSONFindMemberByName(
+                                poObjFeature, "geometry"))
+                        {
+                            eGeomType = wkbUnknown;
+                            poSRS =
+                                OGRESRIJSONReadSpatialReference(poObjGeometry);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     poLayer_ = new OGRGeoJSONLayer(pszName, poSRS, eGeomType, poDS, nullptr);
@@ -157,10 +189,13 @@ void OGRESRIJSONReader::ReadLayers(OGRGeoJSONDataSource *poDS,
 bool OGRESRIJSONReader::GenerateLayerDefn()
 {
     CPLAssert(nullptr != poGJObject_);
-    CPLAssert(nullptr != poLayer_->GetLayerDefn());
-    CPLAssert(0 == poLayer_->GetLayerDefn()->GetFieldCount());
 
     bool bSuccess = true;
+
+    OGRFeatureDefn *poDefn = poLayer_->GetLayerDefn();
+    CPLAssert(nullptr != poDefn);
+    CPLAssert(0 == poDefn->GetFieldCount());
+    auto oTemporaryUnsealer(poDefn->GetTemporaryUnsealer());
 
     /* -------------------------------------------------------------------- */
     /*      Scan all features and generate layer definition.                */
@@ -180,29 +215,87 @@ bool OGRESRIJSONReader::GenerateLayerDefn()
             }
         }
     }
+    else if ((poFields = OGRGeoJSONFindMemberByName(
+                  poGJObject_, "fieldAliases")) != nullptr &&
+             json_object_get_type(poFields) == json_type_object)
+    {
+        json_object_iter it;
+        it.key = nullptr;
+        it.val = nullptr;
+        it.entry = nullptr;
+        json_object_object_foreachC(poFields, it)
+        {
+            OGRFieldDefn fldDefn(it.key, OFTString);
+            poDefn->AddFieldDefn(&fldDefn);
+        }
+    }
     else
     {
-        poFields = OGRGeoJSONFindMemberByName(poGJObject_, "fieldAliases");
-        if (nullptr != poFields &&
-            json_object_get_type(poFields) == json_type_object)
+        // Guess the fields' schema from the content of the features' "attributes"
+        // element
+        json_object *poObjFeatures =
+            OGRGeoJSONFindMemberByName(poGJObject_, "features");
+        if (poObjFeatures &&
+            json_type_array == json_object_get_type(poObjFeatures))
         {
-            OGRFeatureDefn *poDefn = poLayer_->GetLayerDefn();
-            json_object_iter it;
-            it.key = nullptr;
-            it.val = nullptr;
-            it.entry = nullptr;
-            json_object_object_foreachC(poFields, it)
+            gdal::DirectedAcyclicGraph<int, std::string> dag;
+            std::vector<std::unique_ptr<OGRFieldDefn>> apoFieldDefn{};
+            std::map<std::string, int> oMapFieldNameToIdx{};
+            std::vector<int> anCurFieldIndices;
+            std::set<int> aoSetUndeterminedTypeFields;
+
+            const auto nFeatures = json_object_array_length(poObjFeatures);
+            for (auto i = decltype(nFeatures){0}; i < nFeatures; ++i)
             {
-                OGRFieldDefn fldDefn(it.key, OFTString);
-                poDefn->AddFieldDefn(&fldDefn);
+                json_object *poObjFeature =
+                    json_object_array_get_idx(poObjFeatures, i);
+                if (poObjFeature != nullptr &&
+                    json_object_get_type(poObjFeature) == json_type_object)
+                {
+                    int nPrevFieldIdx = -1;
+
+                    json_object *poObjProps =
+                        OGRGeoJSONFindMemberByName(poObjFeature, "attributes");
+                    if (nullptr != poObjProps &&
+                        json_object_get_type(poObjProps) == json_type_object)
+                    {
+                        json_object_iter it;
+                        it.key = nullptr;
+                        it.val = nullptr;
+                        it.entry = nullptr;
+                        json_object_object_foreachC(poObjProps, it)
+                        {
+                            anCurFieldIndices.clear();
+                            OGRGeoJSONReaderAddOrUpdateField(
+                                anCurFieldIndices, oMapFieldNameToIdx,
+                                apoFieldDefn, it.key, it.val,
+                                /*bFlattenNestedAttributes = */ true,
+                                /* chNestedAttributeSeparator = */ '.',
+                                /* bArrayAsString =*/false,
+                                /* bDateAsString = */ false,
+                                aoSetUndeterminedTypeFields);
+                            for (int idx : anCurFieldIndices)
+                            {
+                                dag.addNode(idx,
+                                            apoFieldDefn[idx]->GetNameRef());
+                                if (nPrevFieldIdx != -1)
+                                {
+                                    dag.addEdge(nPrevFieldIdx, idx);
+                                }
+                                nPrevFieldIdx = idx;
+                            }
+                        }
+                    }
+                }
             }
-        }
-        else
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Invalid FeatureCollection object. "
-                     "Missing \'fields\' member.");
-            bSuccess = false;
+
+            const auto sortedFields = dag.getTopologicalOrdering();
+            CPLAssert(sortedFields.size() == apoFieldDefn.size());
+            for (int idx : sortedFields)
+            {
+                // cppcheck-suppress containerOutOfBounds
+                poDefn->AddFieldDefn(apoFieldDefn[idx].get());
+            }
         }
     }
 
@@ -228,36 +321,72 @@ bool OGRESRIJSONReader::ParseField(json_object *poObj)
     if (nullptr != poObjName && nullptr != poObjType)
     {
         OGRFieldType eFieldType = OFTString;
-        if (EQUAL(json_object_get_string(poObjType), "esriFieldTypeOID"))
+        OGRFieldSubType eFieldSubType = OFSTNone;
+        const char *pszObjName = json_object_get_string(poObjName);
+        const char *pszObjType = json_object_get_string(poObjType);
+        if (EQUAL(pszObjType, "esriFieldTypeString"))
+        {
+            // do nothing
+        }
+        else if (EQUAL(pszObjType, "esriFieldTypeOID"))
         {
             eFieldType = OFTInteger;
-            poLayer_->SetFIDColumn(json_object_get_string(poObjName));
+            poLayer_->SetFIDColumn(pszObjName);
         }
-        else if (EQUAL(json_object_get_string(poObjType),
-                       "esriFieldTypeDouble"))
+        else if (EQUAL(pszObjType, "esriFieldTypeSingle"))
+        {
+            eFieldType = OFTReal;
+            eFieldSubType = OFSTFloat32;
+        }
+        else if (EQUAL(pszObjType, "esriFieldTypeDouble"))
         {
             eFieldType = OFTReal;
         }
-        else if (EQUAL(json_object_get_string(poObjType),
-                       "esriFieldTypeSmallInteger") ||
-                 EQUAL(json_object_get_string(poObjType),
-                       "esriFieldTypeInteger"))
+        else if (EQUAL(pszObjType, "esriFieldTypeSmallInteger"))
+        {
+            eFieldType = OFTInteger;
+            eFieldSubType = OFSTInt16;
+        }
+        else if (EQUAL(pszObjType, "esriFieldTypeInteger"))
         {
             eFieldType = OFTInteger;
         }
-        OGRFieldDefn fldDefn(json_object_get_string(poObjName), eFieldType);
-
-        json_object *const poObjLength =
-            OGRGeoJSONFindMemberByName(poObj, "length");
-        if (poObjLength != nullptr &&
-            json_object_get_type(poObjLength) == json_type_int)
+        else if (EQUAL(pszObjType, "esriFieldTypeDate"))
         {
-            const int nWidth = json_object_get_int(poObjLength);
-            // A dummy width of 2147483647 seems to indicate no known field with
-            // which in the OGR world is better modelled as 0 field width.
-            // (#6529)
-            if (nWidth != INT_MAX)
-                fldDefn.SetWidth(nWidth);
+            eFieldType = OFTDateTime;
+        }
+        else
+        {
+            CPLDebug("ESRIJSON",
+                     "Unhandled fields[\"%s\"].type = %s. "
+                     "Processing it as a String",
+                     pszObjName, pszObjType);
+        }
+        OGRFieldDefn fldDefn(pszObjName, eFieldType);
+        fldDefn.SetSubType(eFieldSubType);
+
+        if (eFieldType != OFTDateTime)
+        {
+            json_object *const poObjLength =
+                OGRGeoJSONFindMemberByName(poObj, "length");
+            if (poObjLength != nullptr &&
+                json_object_get_type(poObjLength) == json_type_int)
+            {
+                const int nWidth = json_object_get_int(poObjLength);
+                // A dummy width of 2147483647 seems to indicate no known field with
+                // which in the OGR world is better modelled as 0 field width.
+                // (#6529)
+                if (nWidth != INT_MAX)
+                    fldDefn.SetWidth(nWidth);
+            }
+        }
+
+        json_object *poObjAlias = OGRGeoJSONFindMemberByName(poObj, "alias");
+        if (poObjAlias && json_object_get_type(poObjAlias) == json_type_string)
+        {
+            const char *pszAlias = json_object_get_string(poObjAlias);
+            if (strcmp(pszObjName, pszAlias) != 0)
+                fldDefn.SetAlternativeName(pszAlias);
         }
 
         poDefn->AddFieldDefn(&fldDefn);
@@ -328,6 +457,29 @@ OGRGeometryH OGR_G_CreateGeometryFromEsriJson(const char *pszJson)
 }
 
 /************************************************************************/
+/*                           EsriDateToOGRDate()                        */
+/************************************************************************/
+
+static void EsriDateToOGRDate(int64_t nVal, OGRField *psField)
+{
+    const auto nSeconds = nVal / 1000;
+    const auto nMillisec = static_cast<int>(nVal % 1000);
+
+    struct tm brokendowntime;
+    CPLUnixTimeToYMDHMS(nSeconds, &brokendowntime);
+
+    psField->Date.Year = static_cast<GInt16>(brokendowntime.tm_year + 1900);
+    psField->Date.Month = static_cast<GByte>(brokendowntime.tm_mon + 1);
+    psField->Date.Day = static_cast<GByte>(brokendowntime.tm_mday);
+    psField->Date.Hour = static_cast<GByte>(brokendowntime.tm_hour);
+    psField->Date.Minute = static_cast<GByte>(brokendowntime.tm_min);
+    psField->Date.Second =
+        static_cast<float>(brokendowntime.tm_sec + nMillisec / 1000.0);
+    psField->Date.TZFlag = 100;
+    psField->Date.Reserved = 0;
+}
+
+/************************************************************************/
 /*                           ReadFeature()                              */
 /************************************************************************/
 
@@ -362,17 +514,35 @@ OGRFeature *OGRESRIJSONReader::ReadFeature(json_object *poObj)
                 {
                     if (EQUAL(it.key, poLayer_->GetFIDColumn()))
                         poFeature->SetFID(json_object_get_int(it.val));
-                    if (poLayer_->GetLayerDefn()
-                            ->GetFieldDefn(nField)
-                            ->GetType() == OFTReal)
+                    switch (poLayer_->GetLayerDefn()
+                                ->GetFieldDefn(nField)
+                                ->GetType())
                     {
-                        poFeature->SetField(
-                            nField, CPLAtofM(json_object_get_string(it.val)));
-                    }
-                    else
-                    {
-                        poFeature->SetField(nField,
-                                            json_object_get_string(it.val));
+                        case OFTInteger:
+                        {
+                            poFeature->SetField(nField,
+                                                json_object_get_int(it.val));
+                            break;
+                        }
+                        case OFTReal:
+                        {
+                            poFeature->SetField(nField,
+                                                json_object_get_double(it.val));
+                            break;
+                        }
+                        case OFTDateTime:
+                        {
+                            const auto nVal = json_object_get_int64(it.val);
+                            EsriDateToOGRDate(
+                                nVal, poFeature->GetRawFieldRef(nField));
+                            break;
+                        }
+                        default:
+                        {
+                            poFeature->SetField(nField,
+                                                json_object_get_string(it.val));
+                            break;
+                        }
                     }
                 }
             }
@@ -552,10 +722,10 @@ OGRPoint *OGRESRIJSONReadPoint(json_object *poObj)
 }
 
 /************************************************************************/
-/*                     OGRESRIJSONReaderParseZM()                  */
+/*                     OGRESRIJSONReaderParseZM()                      */
 /************************************************************************/
 
-static bool OGRESRIJSONReaderParseZM(json_object *poObj, bool *bHasZ,
+static void OGRESRIJSONReaderParseZM(json_object *poObj, bool *bHasZ,
                                      bool *bHasM)
 {
     CPLAssert(nullptr != poObj);
@@ -586,7 +756,6 @@ static bool OGRESRIJSONReaderParseZM(json_object *poObj, bool *bHasZ,
         *bHasZ = bZ;
     if (bHasM != nullptr)
         *bHasM = bM;
-    return true;
 }
 
 /************************************************************************/
@@ -727,11 +896,7 @@ OGRGeometry *OGRESRIJSONReadLineString(json_object *poObj)
     bool bHasZ = false;
     bool bHasM = false;
 
-    if (!OGRESRIJSONReaderParseZM(poObj, &bHasZ, &bHasM))
-    {
-        CPLError(CE_Warning, CPLE_AppDefined,
-                 "Failed to parse hasZ and/or hasM from geometry");
-    }
+    OGRESRIJSONReaderParseZM(poObj, &bHasZ, &bHasM);
 
     json_object *poObjPaths = OGRGeoJSONFindMemberByName(poObj, "paths");
     if (nullptr == poObjPaths)
@@ -831,11 +996,7 @@ OGRGeometry *OGRESRIJSONReadPolygon(json_object *poObj)
     bool bHasZ = false;
     bool bHasM = false;
 
-    if (!OGRESRIJSONReaderParseZM(poObj, &bHasZ, &bHasM))
-    {
-        CPLError(CE_Warning, CPLE_AppDefined,
-                 "Failed to parse hasZ and/or hasM from geometry");
-    }
+    OGRESRIJSONReaderParseZM(poObj, &bHasZ, &bHasM);
 
     json_object *poObjRings = OGRGeoJSONFindMemberByName(poObj, "rings");
     if (nullptr == poObjRings)
@@ -870,7 +1031,7 @@ OGRGeometry *OGRESRIJSONReadPolygon(json_object *poObj)
         }
 
         OGRPolygon *poPoly = new OGRPolygon();
-        auto poLine = cpl::make_unique<OGRLinearRing>();
+        auto poLine = std::make_unique<OGRLinearRing>();
         papoGeoms[iRing] = poPoly;
 
         const auto nPoints = json_object_array_length(poObjRing);
@@ -930,11 +1091,7 @@ OGRMultiPoint *OGRESRIJSONReadMultiPoint(json_object *poObj)
     bool bHasZ = false;
     bool bHasM = false;
 
-    if (!OGRESRIJSONReaderParseZM(poObj, &bHasZ, &bHasM))
-    {
-        CPLError(CE_Warning, CPLE_AppDefined,
-                 "Failed to parse hasZ and/or hasM from geometry");
-    }
+    OGRESRIJSONReaderParseZM(poObj, &bHasZ, &bHasM);
 
     json_object *poObjPoints = OGRGeoJSONFindMemberByName(poObj, "points");
     if (nullptr == poObjPoints)

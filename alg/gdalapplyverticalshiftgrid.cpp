@@ -38,9 +38,8 @@
 
 #include "proj.h"
 
+#include <cmath>
 #include <limits>
-
-CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                        GDALApplyVSGDataset                           */
@@ -257,7 +256,7 @@ CPLErr GDALApplyVSGRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
                 if (bHasNoData && fSrcVal == fNoDataValue)
                 {
                 }
-                else if (CPLIsInf(fGridVal))
+                else if (std::isinf(fGridVal))
                 {
                     CPLError(CE_Failure, CPLE_AppDefined,
                              "Missing vertical grid value at source (%d,%d)",
@@ -522,7 +521,7 @@ GDALDatasetH GDALApplyVerticalShiftGrid(GDALDatasetH hSrcDataset,
     poReprojectedGrid->AddBand(GDT_Float32, nullptr);
 
     GDALApplyVSGDataset *poOutDS = new GDALApplyVSGDataset(
-        reinterpret_cast<GDALDataset *>(hSrcDataset), poReprojectedGrid, eDT,
+        GDALDataset::FromHandle(hSrcDataset), poReprojectedGrid, eDT,
         CPL_TO_BOOL(bInverse), dfSrcUnitToMeter, dfDstUnitToMeter,
         // Undocumented option. For testing only
         atoi(CSLFetchNameValueDef(papszOptions, "BLOCKSIZE", "256")));

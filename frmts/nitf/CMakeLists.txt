@@ -14,14 +14,33 @@ add_gdal_driver(
           nitf_gcprpc.cpp
           nitfwritejpeg.cpp
           nitfwritejpeg_12.cpp
-  BUILTIN)
+  CORE_SOURCES
+          nitfdrivercore.cpp
+  PLUGIN_CAPABLE_IF
+          "NOT GDAL_USE_JPEG_INTERNAL\\\;NOT GDAL_USE_JPEG12_INTERNAL\\\;NOT GDAL_USE_TIFF_INTERNAL"
+  NO_SHARED_SYMBOL_WITH_CORE
+)
+
+set(GDAL_DATA_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/data/nitf_spec.xml
+    ${CMAKE_CURRENT_SOURCE_DIR}/data/nitf_spec.xsd
+    ${CMAKE_CURRENT_SOURCE_DIR}/data/gt_datum.csv
+    ${CMAKE_CURRENT_SOURCE_DIR}/data/gt_ellips.csv
+)
+set_property(
+  TARGET ${GDAL_LIB_TARGET_NAME}
+  APPEND
+  PROPERTY RESOURCE "${GDAL_DATA_FILES}")
+
+if(NOT TARGET gdal_NITF)
+    return()
+endif()
+
 gdal_standard_includes(gdal_NITF)
 target_include_directories(gdal_NITF PRIVATE ${GDAL_RASTER_FORMAT_SOURCE_DIR}/gtiff
                                              ${GDAL_RASTER_FORMAT_SOURCE_DIR}/vrt)
 
-if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.16)
-  set_property(SOURCE nitfimage.c nitffile.c nitfdes.c PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
-endif ()
+set_property(SOURCE nitfwritejpeg.cpp nitfwritejpeg_12.cpp PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
 
 if (GDAL_USE_TIFF_INTERNAL)
   gdal_add_vendored_lib(gdal_NITF libtiff)
@@ -51,7 +70,7 @@ if (NOT GDAL_USE_TIFF_INTERNAL)
   gdal_target_link_libraries(gdal_NITF PRIVATE TIFF::TIFF)
 endif ()
 
-add_executable(nitfdump EXCLUDE_FROM_ALL nitfdump.c nitffile.c nitfimage.c rpftocfile.cpp nitfbilevel.cpp nitfaridpcm.cpp mgrs.c)
+add_executable(nitfdump EXCLUDE_FROM_ALL nitfdump.c nitffile.c nitfimage.c rpftocfile.cpp nitfbilevel.cpp nitfaridpcm.cpp mgrs.c nitfdes.c)
 if (GDAL_USE_TIFF_INTERNAL)
   target_sources(nitfdump PRIVATE $<TARGET_OBJECTS:libtiff>)
   gdal_add_vendored_lib(nitfdump libtiff)

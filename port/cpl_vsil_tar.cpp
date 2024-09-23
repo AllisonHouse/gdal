@@ -122,18 +122,22 @@ class VSITarReader final : public VSIArchiveReader
     int GotoFirstFile() override;
     int GotoNextFile() override;
     VSIArchiveEntryFileOffset *GetFileOffset() override;
+
     GUIntBig GetFileSize() override
     {
         return nNextFileSize;
     }
+
     CPLString GetFileName() override
     {
         return osNextFileName;
     }
+
     GIntBig GetModifiedTime() override
     {
         return nModifiedTime;
     }
+
     int GotoFileOffset(VSIArchiveEntryFileOffset *pOffset) override;
 };
 
@@ -434,7 +438,7 @@ int VSITarReader::GotoNextFile()
                 return FALSE;
             osNextFileName.resize(static_cast<size_t>(nNextFileSize));
             if (osNextFileName.back() == '\0')
-                osNextFileName.resize(osNextFileName.size() - 1);
+                osNextFileName.pop_back();
         }
         else
         {
@@ -532,6 +536,7 @@ class VSITarFilesystemHandler final : public VSIArchiveFilesystemHandler
     {
         return "/vsitar";
     }
+
     std::vector<CPLString> GetExtensions() override;
     VSIArchiveReader *CreateReader(const char *pszTarFileName) override;
 

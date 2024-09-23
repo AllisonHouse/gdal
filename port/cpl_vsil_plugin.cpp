@@ -70,6 +70,16 @@ int VSIPluginHandle::Eof()
     return poFS->Eof(cbData);
 }
 
+int VSIPluginHandle::Error()
+{
+    return poFS->Error(cbData);
+}
+
+void VSIPluginHandle::ClearErr()
+{
+    poFS->ClearErr(cbData);
+}
+
 int VSIPluginHandle::Close()
 {
     int ret = poFS->Close(cbData);
@@ -359,6 +369,28 @@ int VSIPluginFilesystemHandler::Eof(void *pFile)
     return -1;
 }
 
+int VSIPluginFilesystemHandler::Error(void *pFile)
+{
+    if (m_cb->error)
+    {
+        return m_cb->error(pFile);
+    }
+    CPLDebug("CPL", "Error() not implemented for %s plugin", m_Prefix);
+    return 0;
+}
+
+void VSIPluginFilesystemHandler::ClearErr(void *pFile)
+{
+    if (m_cb->clear_err)
+    {
+        m_cb->clear_err(pFile);
+    }
+    else
+    {
+        CPLDebug("CPL", "ClearErr() not implemented for %s plugin", m_Prefix);
+    }
+}
+
 int VSIPluginFilesystemHandler::Close(void *pFile)
 {
     if (m_cb->close != nullptr)
@@ -435,6 +467,7 @@ int VSIPluginFilesystemHandler::Unlink(const char *pszFilename)
         return -1;
     return unlink(GetCallbackFilename(pszFilename));
 }
+
 int VSIPluginFilesystemHandler::Rename(const char *oldpath, const char *newpath)
 {
     if (m_cb->rename == nullptr || !IsValidFilename(oldpath) ||
@@ -443,12 +476,14 @@ int VSIPluginFilesystemHandler::Rename(const char *oldpath, const char *newpath)
     return m_cb->rename(m_cb->pUserData, GetCallbackFilename(oldpath),
                         GetCallbackFilename(newpath));
 }
+
 int VSIPluginFilesystemHandler::Mkdir(const char *pszDirname, long nMode)
 {
     if (m_cb->mkdir == nullptr || !IsValidFilename(pszDirname))
         return -1;
     return m_cb->mkdir(m_cb->pUserData, GetCallbackFilename(pszDirname), nMode);
 }
+
 int VSIPluginFilesystemHandler::Rmdir(const char *pszDirname)
 {
     if (m_cb->rmdir == nullptr || !IsValidFilename(pszDirname))
@@ -470,12 +505,19 @@ int VSIInstallPluginHandler(const char *pszPrefix,
     return 0;
 }
 
+int VSIRemovePluginHandler(const char *pszPrefix)
+{
+    VSIFileManager::RemoveHandler(pszPrefix);
+    return 0;
+}
+
 VSIFilesystemPluginCallbacksStruct *
 VSIAllocFilesystemPluginCallbacksStruct(void)
 {
     return static_cast<VSIFilesystemPluginCallbacksStruct *>(
         VSI_CALLOC_VERBOSE(1, sizeof(VSIFilesystemPluginCallbacksStruct)));
 }
+
 void VSIFreeFilesystemPluginCallbacksStruct(
     VSIFilesystemPluginCallbacksStruct *poCb)
 {

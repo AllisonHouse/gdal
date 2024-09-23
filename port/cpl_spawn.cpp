@@ -37,7 +37,7 @@
 #include "cpl_multiproc.h"
 #include "cpl_string.h"
 
-#if defined(WIN32)
+#if defined(_WIN32)
 #include <windows.h>
 #else
 #include <cassert>
@@ -161,7 +161,7 @@ int CPLSpawn(const char *const papszArgv[], VSILFILE *fin, VSILFILE *fout,
     return CPLSpawnAsyncFinish(sp, TRUE, FALSE);
 }
 
-#if defined(WIN32)
+#if defined(_WIN32)
 
 /************************************************************************/
 /*                          CPLPipeRead()                               */
@@ -474,7 +474,7 @@ int CPLPipeRead(CPL_FILE_HANDLE fin, void *data, int length)
     {
         while (true)
         {
-            const int n = static_cast<int>(read(fin, pabyData, nRemain));
+            const auto n = read(fin, pabyData, nRemain);
             if (n < 0)
             {
                 if (errno == EINTR)
@@ -485,7 +485,7 @@ int CPLPipeRead(CPL_FILE_HANDLE fin, void *data, int length)
             else if (n == 0)
                 return FALSE;
             pabyData += n;
-            nRemain -= n;
+            nRemain -= static_cast<int>(n);
             break;
         }
     }
@@ -515,7 +515,7 @@ int CPLPipeWrite(CPL_FILE_HANDLE fout, const void *data, int length)
     {
         while (true)
         {
-            const int n = static_cast<int>(write(fout, pabyData, nRemain));
+            const auto n = write(fout, pabyData, nRemain);
             if (n < 0)
             {
                 if (errno == EINTR)
@@ -524,7 +524,7 @@ int CPLPipeWrite(CPL_FILE_HANDLE fout, const void *data, int length)
                     return FALSE;
             }
             pabyData += n;
-            nRemain -= n;
+            nRemain -= static_cast<int>(n);
             break;
         }
     }
@@ -887,6 +887,14 @@ int CPLSpawnAsyncFinish(CPLSpawnedProcess *p, int bWait, CPL_UNUSED int bKill)
             }
             else
             {
+                if (WIFEXITED(status))
+                {
+                    status = WEXITSTATUS(status);
+                }
+                else
+                {
+                    status = -1;
+                }
                 break;
             }
         }

@@ -49,11 +49,13 @@ struct test_gdal_gtiff : public ::testing::Test
         std::string file_;
         int band_;
         int checksum_;
+
         raster_t(std::string const &f, int b, int c)
             : file_(f), band_(b), checksum_(c)
         {
         }
     };
+
     typedef std::vector<raster_t> rasters_t;
 
     GDALDriverH drv_;
@@ -236,6 +238,34 @@ TEST_F(test_gdal_gtiff, raster_min_max)
     EXPECT_EQ(expect[1], minmax[1]);
 
     GDALClose(ds);
+}
+
+// Test setting a nodata value with SetNoDataValue(double) on a int64 dataset
+TEST_F(test_gdal_gtiff, set_nodata_value_on_int64)
+{
+    std::string osTmpFile = "/vsimem/temp.tif";
+    auto poDS =
+        std::unique_ptr<GDALDataset>(GDALDriver::FromHandle(drv_)->Create(
+            osTmpFile.c_str(), 1, 1, 1, GDT_Int64, nullptr));
+    EXPECT_EQ(poDS->GetRasterBand(1)->SetNoDataValue(1), CE_None);
+    {
+        int bGotNoData = false;
+        EXPECT_EQ(poDS->GetRasterBand(1)->GetNoDataValue(&bGotNoData), 1.0);
+        EXPECT_TRUE(bGotNoData);
+    }
+    {
+        int bGotNoData = false;
+        EXPECT_EQ(poDS->GetRasterBand(1)->GetNoDataValueAsInt64(&bGotNoData),
+                  1.0);
+        EXPECT_TRUE(bGotNoData);
+    }
+    int64_t nVal = 0;
+    EXPECT_EQ(poDS->GetRasterBand(1)->RasterIO(GF_Read, 0, 0, 1, 1, &nVal, 1, 1,
+                                               GDT_Int64, 0, 0, nullptr),
+              CE_None);
+    EXPECT_EQ(nVal, 1);
+    poDS.reset();
+    VSIUnlink(osTmpFile.c_str());
 }
 
 }  // namespace

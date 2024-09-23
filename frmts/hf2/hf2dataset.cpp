@@ -659,7 +659,7 @@ GDALDataset *HF2Dataset::Open(GDALOpenInfo *poOpenInfo)
             oSRS.SetUTM(std::abs(static_cast<int>(nUTMZone)), nUTMZone > 0);
         }
         if (bHasSRS)
-            poDS->m_oSRS = oSRS;
+            poDS->m_oSRS = std::move(oSRS);
     }
 
     /* -------------------------------------------------------------------- */
@@ -974,8 +974,8 @@ GDALDataset *HF2Dataset::CreateCopy(const char *pszFilename,
     const int nXBlocks = (nXSize + nTileSize - 1) / nTileSize;
     const int nYBlocks = (nYSize + nTileSize - 1) / nTileSize;
 
-    void *pTileBuffer = (void *)VSI_MALLOC_VERBOSE(
-        nTileSize * nTileSize * (GDALGetDataTypeSize(eReqDT) / 8));
+    void *pTileBuffer = VSI_MALLOC3_VERBOSE(nTileSize, nTileSize,
+                                            GDALGetDataTypeSizeBytes(eReqDT));
     if (pTileBuffer == nullptr)
     {
         VSIFCloseL(fp);
@@ -1061,7 +1061,7 @@ GDALDataset *HF2Dataset::CreateCopy(const char *pszFilename,
                 for (int k = 1; k < nReqYSize * nReqXSize; k++)
                 {
                     float fVal = ((float *)pTileBuffer)[k];
-                    if (CPLIsNan(fVal))
+                    if (std::isnan(fVal))
                     {
                         CPLError(CE_Failure, CPLE_NotSupported,
                                  "NaN value found");

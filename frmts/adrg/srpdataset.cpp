@@ -824,7 +824,7 @@ bool SRPDataset::GetFromRecord(const char *pszFileName, DDFRecord *record)
     }
     else
     {
-        if (std::abs(ZNA) >= 1 && std::abs(ZNA) <= 60)
+        if (ZNA >= -60 && ZNA <= 60 && ZNA != 0)
         {
             m_oSRS.SetUTM(std::abs(ZNA), ZNA > 0);
             m_oSRS.SetWellKnownGeogCS("WGS84");
@@ -990,6 +990,7 @@ DDFRecord *SRPDataset::FindRecordInGENForIMG(DDFModule &module,
         }
     }
 }
+
 /************************************************************************/
 /*                           OpenDataset()                              */
 /************************************************************************/
@@ -1414,9 +1415,9 @@ char **SRPDataset::GetIMGListFromGEN(const char *pszFileName,
             CPLDebug("SRP", "BAD=%s", osBAD.c_str());
 
             /* Build full IMG file name from BAD value */
-            CPLString osGENDir(CPLGetDirname(pszFileName));
+            const CPLString osGENDir(CPLGetDirname(pszFileName));
 
-            CPLString osFileName =
+            const CPLString osFileName =
                 CPLFormFilename(osGENDir.c_str(), osBAD.c_str(), nullptr);
             VSIStatBufL sStatBuf;
             if (VSIStatL(osFileName, &sStatBuf) == 0)
@@ -1617,7 +1618,7 @@ GDALDataset *SRPDataset::Open(GDALOpenInfo *poOpenInfo)
                     return nullptr;
             }
 
-            osGENFileName = osFileName;
+            osGENFileName = std::move(osFileName);
         }
     }
 

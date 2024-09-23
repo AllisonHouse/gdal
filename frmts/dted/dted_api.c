@@ -40,6 +40,7 @@ static void DTEDDetectVariantWithMissingColumns(DTEDInfo *psDInfo);
 CPL_INLINE static void CPL_IGNORE_RET_VAL_INT(CPL_UNUSED int unused)
 {
 }
+
 CPL_INLINE static void CPL_IGNORE_RET_VAL_SIZET(CPL_UNUSED size_t unused)
 {
 }
@@ -1006,6 +1007,16 @@ static void DTEDGetMetadataLocation(DTEDInfo *psDInfo, DTEDMetaDataCode eCode,
             else
                 *ppszLocation = psDInfo->pachDSIRecord + 289;
             *pnLength = 2;
+            break;
+
+        case DTEDMD_SECURITYCONTROL:
+            *ppszLocation = psDInfo->pachDSIRecord + 4;
+            *pnLength = 2;
+            break;
+
+        case DTEDMD_SECURITYHANDLING:
+            *ppszLocation = psDInfo->pachDSIRecord + 6;
+            *pnLength = 27;
             break;
 
         default:

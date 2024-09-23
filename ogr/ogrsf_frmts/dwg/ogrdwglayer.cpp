@@ -423,7 +423,7 @@ OGRFeature *OGRDWGLayer::TranslateMTEXT(OdDbEntityPtr poEntity)
     CPLString osText = TextUnescape(poMTE->contents(), true);
 
     if (!osText.empty() && osText.back() == '\n')
-        osText.resize(osText.size() - 1);
+        osText.pop_back();
 
     poFeature->SetField("Text", osText);
 
@@ -543,7 +543,7 @@ OGRFeature *OGRDWGLayer::TranslateTEXT(OdDbEntityPtr poEntity)
     CPLString osText = TextUnescape(poText->textString(), false);
 
     if (!osText.empty() && osText.back() == '\n')
-        osText.resize(osText.size() - 1);
+        osText.pop_back();
 
     poFeature->SetField("Text", osText);
 
@@ -692,7 +692,9 @@ OGRFeature *OGRDWGLayer::TranslateLWPOLYLINE(OdDbEntityPtr poEntity)
     if (poPL->isClosed())
         oSmoothPolyline.Close();
 
-    poFeature->SetGeometryDirectly(oSmoothPolyline.Tessellate());
+    const bool bAsPolygon = poPL->isClosed() && poDS->ClosedLineAsPolygon();
+
+    poFeature->SetGeometryDirectly(oSmoothPolyline.Tessellate(bAsPolygon));
 
     PrepareLineStyle(poFeature);
 
@@ -1085,11 +1087,12 @@ class GeometryInsertTransformer : public OGRCoordinateTransformation
     double dfZScale;
     double dfAngle;
 
-    OGRSpatialReference *GetSourceCS() override
+    const OGRSpatialReference *GetSourceCS() const override
     {
         return nullptr;
     }
-    OGRSpatialReference *GetTargetCS() override
+
+    const OGRSpatialReference *GetTargetCS() const override
     {
         return nullptr;
     }
@@ -1104,11 +1107,10 @@ class GeometryInsertTransformer : public OGRCoordinateTransformation
         return nullptr;
     }
 
-    int Transform(int nCount, double *x, double *y, double *z = nullptr,
+    int Transform(size_t nCount, double *x, double *y, double *z = nullptr,
                   double * /*t*/ = nullptr, int *pabSuccess = nullptr) override
     {
-        int i;
-        for (i = 0; i < nCount; i++)
+        for (size_t i = 0; i < nCount; i++)
         {
             double dfXNew, dfYNew;
 
@@ -1525,4 +1527,13 @@ int OGRDWGLayer::TestCapability(const char *pszCap)
         return TRUE;
     else
         return FALSE;
+}
+
+/************************************************************************/
+/*                             GetDataset()                             */
+/************************************************************************/
+
+GDALDataset *OGRDWGLayer::GetDataset()
+{
+    return poDS;
 }

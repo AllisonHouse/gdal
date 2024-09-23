@@ -50,10 +50,8 @@
 static GDALDataset *GetUnderlyingDataset(GDALDataset *poSrcDS)
 {
     // Test if we can directly copy original JPEG content if available.
-    if (poSrcDS->GetDriver() != nullptr &&
-        poSrcDS->GetDriver() == GDALGetDriverByName("VRT"))
+    if (auto poVRTDS = dynamic_cast<VRTDataset *>(poSrcDS))
     {
-        VRTDataset *poVRTDS = cpl::down_cast<VRTDataset *>(poSrcDS);
         poSrcDS = poVRTDS->GetSingleSimpleSource();
     }
 
@@ -240,7 +238,10 @@ CPLErr GTIFF_DirectCopyFromJPEG(GDALDataset *poDS, GDALDataset *poSrcDS,
 
 #ifdef HAVE_LIBJPEG
 
-#include "vsidataio.h"
+#define jpeg_vsiio_src GTIFF_jpeg_vsiio_src
+#define jpeg_vsiio_dest GTIFF_jpeg_vsiio_dest
+#include "../jpeg/vsidataio.h"
+#include "../jpeg/vsidataio.cpp"
 
 #include <setjmp.h>
 
@@ -376,13 +377,10 @@ static void GTIFF_ErrorExitJPEG(j_common_ptr cinfo)
 /************************************************************************/
 
 static void GTIFF_Set_TIFFTAG_JPEGTABLES(TIFF *hTIFF,
-                                         jpeg_decompress_struct &sDInfo,
                                          jpeg_compress_struct &sCInfo)
 {
-    char szTmpFilename[128] = {'\0'};
-    snprintf(szTmpFilename, sizeof(szTmpFilename), "/vsimem/tables_%p",
-             &sDInfo);
-    VSILFILE *fpTABLES = VSIFOpenL(szTmpFilename, "wb+");
+    const std::string osTmpFilename(VSIMemGenerateHiddenFilename("tables"));
+    VSILFILE *fpTABLES = VSIFOpenL(osTmpFilename.c_str(), "wb+");
 
     uint16_t nPhotometric = 0;
     TIFFGetField(hTIFF, TIFFTAG_PHOTOMETRIC, &nPhotometric);
@@ -408,11 +406,11 @@ static void GTIFF_Set_TIFFTAG_JPEGTABLES(TIFF *hTIFF,
 
     vsi_l_offset nSizeTables = 0;
     GByte *pabyJPEGTablesData =
-        VSIGetMemFileBuffer(szTmpFilename, &nSizeTables, FALSE);
+        VSIGetMemFileBuffer(osTmpFilename.c_str(), &nSizeTables, FALSE);
     TIFFSetField(hTIFF, TIFFTAG_JPEGTABLES, static_cast<int>(nSizeTables),
                  pabyJPEGTablesData);
 
-    VSIUnlink(szTmpFilename);
+    VSIUnlink(osTmpFilename.c_str());
 }
 
 /************************************************************************/
@@ -463,7 +461,7 @@ CPLErr GTIFF_CopyFromJPEG_WriteAdditionalTags(TIFF *hTIFF, GDALDataset *poSrcDS)
     sDInfo.client_data = &setjmp_buffer;
 
     bCallDestroyDecompress = true;
-    jpeg_create_decompress(&sDInfo);
+    jpeg_CreateDecompress(&sDInfo, JPEG_LIB_VERSION, sizeof(sDInfo));
 
     jpeg_vsiio_src(&sDInfo, fpJPEG);
     jpeg_read_header(&sDInfo, TRUE);
@@ -472,10 +470,10 @@ CPLErr GTIFF_CopyFromJPEG_WriteAdditionalTags(TIFF *hTIFF, GDALDataset *poSrcDS)
     sJErr.error_exit = GTIFF_ErrorExitJPEG;
     sCInfo.client_data = &setjmp_buffer;
 
-    jpeg_create_compress(&sCInfo);
+    jpeg_CreateCompress(&sCInfo, JPEG_LIB_VERSION, sizeof(sCInfo));
     bCallDestroyCompress = true;
     jpeg_copy_critical_parameters(&sDInfo, &sCInfo);
-    GTIFF_Set_TIFFTAG_JPEGTABLES(hTIFF, sDInfo, sCInfo);
+    GTIFF_Set_TIFFTAG_JPEGTABLES(hTIFF, sCInfo);
     bCallDestroyCompress = false;
     jpeg_abort_compress(&sCInfo);
     jpeg_destroy_compress(&sCInfo);
@@ -577,8 +575,9 @@ typedef struct
 
 static CPLErr GTIFF_CopyBlockFromJPEG(GTIFF_CopyBlockFromJPEGArgs *psArgs)
 {
-    CPLString osTmpFilename(CPLSPrintf("/vsimem/%p", psArgs->psDInfo));
-    VSILFILE *fpMEM = VSIFOpenL(osTmpFilename, "wb+");
+    const CPLString osTmpFilename(
+        VSIMemGenerateHiddenFilename("GTIFF_CopyBlockFromJPEG.tif"));
+    VSILFILE *fpMEM = VSIFOpenL(osTmpFilename.c_str(), "wb+");
 
     /* -------------------------------------------------------------------- */
     /*      Initialization of the compressor                                */
@@ -587,7 +586,7 @@ static CPLErr GTIFF_CopyBlockFromJPEG(GTIFF_CopyBlockFromJPEGArgs *psArgs)
     if (setjmp(setjmp_buffer))
     {
         CPL_IGNORE_RET_VAL(VSIFCloseL(fpMEM));
-        VSIUnlink(osTmpFilename);
+        VSIUnlink(osTmpFilename.c_str());
         return CE_Failure;
     }
 
@@ -611,7 +610,7 @@ static CPLErr GTIFF_CopyBlockFromJPEG(GTIFF_CopyBlockFromJPEGArgs *psArgs)
     sCInfo.client_data = &setjmp_buffer;
 
     // Initialize destination compression parameters from source values.
-    jpeg_create_compress(&sCInfo);
+    jpeg_CreateCompress(&sCInfo, JPEG_LIB_VERSION, sizeof(sCInfo));
     jpeg_copy_critical_parameters(psDInfo, &sCInfo);
 
     // Ensure libjpeg won't write any extraneous markers.
@@ -774,7 +773,8 @@ static CPLErr GTIFF_CopyBlockFromJPEG(GTIFF_CopyBlockFromJPEGArgs *psArgs)
     /*      Write the JPEG content with libtiff raw API                     */
     /* -------------------------------------------------------------------- */
     vsi_l_offset nSize = 0;
-    GByte *pabyJPEGData = VSIGetMemFileBuffer(osTmpFilename, &nSize, FALSE);
+    GByte *pabyJPEGData =
+        VSIGetMemFileBuffer(osTmpFilename.c_str(), &nSize, FALSE);
 
     CPLErr eErr = CE_None;
 
@@ -793,7 +793,7 @@ static CPLErr GTIFF_CopyBlockFromJPEG(GTIFF_CopyBlockFromJPEGArgs *psArgs)
             eErr = CE_Failure;
     }
 
-    VSIUnlink(osTmpFilename);
+    VSIUnlink(osTmpFilename.c_str());
 
     return eErr;
 }
@@ -836,7 +836,7 @@ CPLErr GTIFF_CopyFromJPEG(GDALDataset *poDS, GDALDataset *poSrcDS,
     sJErr.error_exit = GTIFF_ErrorExitJPEG;
     sDInfo.client_data = &setjmp_buffer;
 
-    jpeg_create_decompress(&sDInfo);
+    jpeg_CreateDecompress(&sDInfo, JPEG_LIB_VERSION, sizeof(sDInfo));
 
     // This is to address bug related in ticket #1795.
     if (CPLGetConfigOption("JPEGMEM", nullptr) == nullptr)

@@ -171,14 +171,14 @@ static std::string GetTabDescription(const char *pszLine)
  *
  * Constructor.
  **********************************************************************/
-TABFile::TABFile()
-    : m_pszFname(nullptr), m_eAccessMode(TABRead), m_papszTABFile(nullptr),
-      m_nVersion(300), m_panIndexNo(nullptr), m_eTableType(TABTableNative),
-      m_poDATFile(nullptr), m_poMAPFile(nullptr), m_poINDFile(nullptr),
-      m_poDefn(nullptr), m_poSpatialRef(nullptr), bUseSpatialTraversal(FALSE),
-      m_nLastFeatureId(0), m_panMatchingFIDs(nullptr), m_iMatchingFID(0),
-      m_bNeedTABRewrite(FALSE), m_bLastOpWasRead(FALSE),
-      m_bLastOpWasWrite(FALSE)
+TABFile::TABFile(GDALDataset *poDS)
+    : IMapInfoFile(poDS), m_pszFname(nullptr), m_eAccessMode(TABRead),
+      m_papszTABFile(nullptr), m_nVersion(300), m_panIndexNo(nullptr),
+      m_eTableType(TABTableNative), m_poDATFile(nullptr), m_poMAPFile(nullptr),
+      m_poINDFile(nullptr), m_poDefn(nullptr), m_poSpatialRef(nullptr),
+      bUseSpatialTraversal(FALSE), m_nLastFeatureId(0),
+      m_panMatchingFIDs(nullptr), m_iMatchingFID(0), m_bNeedTABRewrite(FALSE),
+      m_bLastOpWasRead(FALSE), m_bLastOpWasWrite(FALSE)
 {
     m_poCurFeature = nullptr;
     m_nCurFeatureId = 0;
@@ -614,6 +614,9 @@ int TABFile::Open(const char *pszFname, TABAccess eAccess,
         m_poDefn->GetGeomFieldCount() != 0)
         m_poDefn->GetGeomFieldDefn(0)->SetSpatialRef(GetSpatialRef());
 
+    if (m_poDefn)
+        m_poDefn->Seal(/* bSealFields = */ true);
+
     return 0;
 }
 
@@ -993,7 +996,8 @@ int TABFile::ParseTABFileFields()
                      *------------------------------------------------*/
                     nStatus = m_poDATFile->ValidateFieldInfoFromTAB(
                         iField, osFieldName, TABFLogical, 0, 0);
-                    poFieldDefn = new OGRFieldDefn(osFieldName, OFTString);
+                    poFieldDefn = new OGRFieldDefn(osFieldName, OFTInteger);
+                    poFieldDefn->SetSubType(OFSTBoolean);
                     poFieldDefn->SetWidth(1);
                 }
                 else
@@ -1185,7 +1189,8 @@ int TABFile::WriteTABFile()
                 if (strlen(GetEncoding()) > 0)
                     osFieldName.Recode(CPL_ENC_UTF8, GetEncoding());
 
-                char *pszCleanName = TABCleanFieldName(osFieldName);
+                char *pszCleanName = TABCleanFieldName(
+                    osFieldName, GetEncoding(), m_bStrictLaundering);
                 osFieldName = pszCleanName;
                 CPLFree(pszCleanName);
 
@@ -1765,7 +1770,20 @@ int TABFile::SetCharset(const char *pszCharset)
     {
         m_poMAPFile->SetEncoding(CharsetToEncoding(pszCharset));
     }
+    if (EQUAL(pszCharset, "UTF-8"))
+    {
+        m_nVersion = std::max(m_nVersion, 1520);
+    }
     return 0;
+}
+
+void TABFile::SetStrictLaundering(bool bStrictLaundering)
+{
+    IMapInfoFile::SetStrictLaundering(bStrictLaundering);
+    if (!bStrictLaundering)
+    {
+        m_nVersion = std::max(m_nVersion, 1520);
+    }
 }
 
 /**********************************************************************
@@ -2041,7 +2059,9 @@ int TABFile::SetFeatureDefn(
             switch (poFieldDefn->GetType())
             {
                 case OFTInteger:
-                    eMapInfoType = TABFInteger;
+                    eMapInfoType = poFieldDefn->GetSubType() == OFSTBoolean
+                                       ? TABFLogical
+                                       : TABFInteger;
                     break;
                 case OFTReal:
                     if (poFieldDefn->GetWidth() > 0 ||
@@ -2223,7 +2243,8 @@ int TABFile::AddFieldNative(const char *pszName, TABFieldType eMapInfoType,
             /*-------------------------------------------------
              * LOGICAL type (value "T" or "F")
              *------------------------------------------------*/
-            poFieldDefn = new OGRFieldDefn(osName.c_str(), OFTString);
+            poFieldDefn = new OGRFieldDefn(osName.c_str(), OFTInteger);
+            poFieldDefn->SetSubType(OFSTBoolean);
             poFieldDefn->SetWidth(1);
             break;
         default:
@@ -2235,7 +2256,7 @@ int TABFile::AddFieldNative(const char *pszName, TABFieldType eMapInfoType,
     /*-----------------------------------------------------
      * Add the FieldDefn to the FeatureDefn
      *----------------------------------------------------*/
-    m_poDefn->AddFieldDefn(poFieldDefn);
+    whileUnsealing(m_poDefn)->AddFieldDefn(poFieldDefn);
     m_oSetFields.insert(CPLString(poFieldDefn->GetNameRef()).toupper());
     delete poFieldDefn;
 
@@ -2762,7 +2783,7 @@ OGRErr TABFile::DeleteField(int iField)
                     (m_poDefn->GetFieldCount() - 1 - iField) * sizeof(int));
         }
 
-        m_poDefn->DeleteFieldDefn(iField);
+        whileUnsealing(m_poDefn)->DeleteFieldDefn(iField);
 
         if (m_eAccessMode == TABReadWrite)
             WriteTABFile();
@@ -2805,7 +2826,7 @@ OGRErr TABFile::ReorderFields(int *panMap)
         CPLFree(m_panIndexNo);
         m_panIndexNo = panNewIndexedField;
 
-        m_poDefn->ReorderFieldDefns(panMap);
+        whileUnsealing(m_poDefn)->ReorderFieldDefns(panMap);
 
         if (m_eAccessMode == TABReadWrite)
             WriteTABFile();
@@ -2836,17 +2857,17 @@ OGRErr TABFile::AlterFieldDefn(int iField, OGRFieldDefn *poNewFieldDefn,
         return OGRERR_FAILURE;
     }
 
-    if (m_poDATFile->AlterFieldDefn(iField, poNewFieldDefn, nFlagsIn) == 0)
+    OGRFieldDefn *poFieldDefn = m_poDefn->GetFieldDefn(iField);
+    if (m_poDATFile->AlterFieldDefn(iField, poFieldDefn, poNewFieldDefn,
+                                    nFlagsIn) == 0)
     {
         m_bNeedTABRewrite = TRUE;
 
-        OGRFieldDefn *poFieldDefn = m_poDefn->GetFieldDefn(iField);
+        auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
         if ((nFlagsIn & ALTER_TYPE_FLAG) &&
             poNewFieldDefn->GetType() != poFieldDefn->GetType())
         {
             poFieldDefn->SetType(poNewFieldDefn->GetType());
-            if ((nFlagsIn & ALTER_WIDTH_PRECISION_FLAG) == 0)
-                poFieldDefn->SetWidth(254);
         }
         if (nFlagsIn & ALTER_NAME_FLAG)
         {
@@ -2855,11 +2876,23 @@ OGRErr TABFile::AlterFieldDefn(int iField, OGRFieldDefn *poNewFieldDefn,
             m_oSetFields.insert(
                 CPLString(poNewFieldDefn->GetNameRef()).toupper());
         }
-        if ((nFlagsIn & ALTER_WIDTH_PRECISION_FLAG) &&
-            poFieldDefn->GetType() == OFTString)
+        if (poFieldDefn->GetType() == OFTString)
         {
             poFieldDefn->SetWidth(m_poDATFile->GetFieldWidth(iField));
         }
+        else if (nFlagsIn & ALTER_WIDTH_PRECISION_FLAG)
+        {
+            poFieldDefn->SetWidth(poNewFieldDefn->GetWidth());
+            poFieldDefn->SetPrecision(poNewFieldDefn->GetPrecision());
+        }
+
+        // Take into account .dat limitations on width & precision to clamp
+        // what user might have specify
+        int nWidth = 0;
+        int nPrecision = 0;
+        GetTABType(poFieldDefn, nullptr, &nWidth, &nPrecision);
+        poFieldDefn->SetWidth(nWidth);
+        poFieldDefn->SetPrecision(nPrecision);
 
         if (m_eAccessMode == TABReadWrite)
             WriteTABFile();

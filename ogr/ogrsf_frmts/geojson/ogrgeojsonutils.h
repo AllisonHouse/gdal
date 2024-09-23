@@ -53,15 +53,17 @@ GeoJSONSourceType GeoJSONGetSourceType(GDALOpenInfo *poOpenInfo);
 GeoJSONSourceType GeoJSONSeqGetSourceType(GDALOpenInfo *poOpenInfo);
 GeoJSONSourceType ESRIJSONDriverGetSourceType(GDALOpenInfo *poOpenInfo);
 GeoJSONSourceType TopoJSONDriverGetSourceType(GDALOpenInfo *poOpenInfo);
+GeoJSONSourceType JSONFGDriverGetSourceType(GDALOpenInfo *poOpenInfo);
 
 /************************************************************************/
 /*                           GeoJSONIsObject                            */
 /************************************************************************/
 
-bool GeoJSONIsObject(const char *pszText);
-bool GeoJSONSeqIsObject(const char *pszText);
-bool ESRIJSONIsObject(const char *pszText);
-bool TopoJSONIsObject(const char *pszText);
+bool GeoJSONIsObject(const char *pszText, GDALOpenInfo *poOpenInfo);
+bool GeoJSONSeqIsObject(const char *pszText, GDALOpenInfo *poOpenInfo);
+bool ESRIJSONIsObject(const char *pszText, GDALOpenInfo *poOpenInfo);
+bool TopoJSONIsObject(const char *pszText, GDALOpenInfo *poOpenInfo);
+bool JSONFGIsObject(const char *pszText, GDALOpenInfo *poOpenInfo);
 
 /************************************************************************/
 /*                           GeoJSONPropertyToFieldType                 */
@@ -75,7 +77,8 @@ OGRFieldType CPL_DLL GeoJSONPropertyToFieldType(json_object *poObject,
 /*                      GeoJSONStringPropertyToFieldType                */
 /************************************************************************/
 
-OGRFieldType GeoJSONStringPropertyToFieldType(json_object *poObject);
+OGRFieldType GeoJSONStringPropertyToFieldType(json_object *poObject,
+                                              int &nTZFlag);
 
 /************************************************************************/
 /*                           OGRGeoJSONGetGeometryName                  */

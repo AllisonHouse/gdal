@@ -274,10 +274,17 @@ CPLErr VRTRawRasterBand::SetRawLink(const char *pszFilename,
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding RawRasterBand.                           */
     /* -------------------------------------------------------------------- */
-    m_poRawRaster = new RawRasterBand(
-        reinterpret_cast<VSILFILE *>(fp), nImageOffset, nPixelOffset,
-        nLineOffset, GetRasterDataType(), eByteOrder, GetXSize(), GetYSize(),
-        RawRasterBand::OwnFP::NO);
+    m_poRawRaster =
+        RawRasterBand::Create(reinterpret_cast<VSILFILE *>(fp), nImageOffset,
+                              nPixelOffset, nLineOffset, GetRasterDataType(),
+                              eByteOrder, GetXSize(), GetYSize(),
+                              RawRasterBand::OwnFP::NO)
+            .release();
+    if (!m_poRawRaster)
+    {
+        CPLCloseShared(fp);
+        return CE_Failure;
+    }
 
     /* -------------------------------------------------------------------- */
     /*      Reset block size to match the raw raster.                       */
@@ -336,9 +343,9 @@ CPLVirtualMem *VRTRawRasterBand::GetVirtualMemAuto(GDALRWFlag eRWFlag,
 /*                              XMLInit()                               */
 /************************************************************************/
 
-CPLErr
-VRTRawRasterBand::XMLInit(CPLXMLNode *psTree, const char *pszVRTPath,
-                          std::map<CPLString, GDALDataset *> &oMapSharedSources)
+CPLErr VRTRawRasterBand::XMLInit(const CPLXMLNode *psTree,
+                                 const char *pszVRTPath,
+                                 VRTMapSharedResources &oMapSharedSources)
 
 {
     const CPLErr eErr =
@@ -422,7 +429,9 @@ VRTRawRasterBand::XMLInit(CPLXMLNode *psTree, const char *pszVRTPath,
 /*                           SerializeToXML()                           */
 /************************************************************************/
 
-CPLXMLNode *VRTRawRasterBand::SerializeToXML(const char *pszVRTPath)
+CPLXMLNode *VRTRawRasterBand::SerializeToXML(const char *pszVRTPath,
+                                             bool &bHasWarnedAboutRAMUsage,
+                                             size_t &nAccRAMUsage)
 
 {
 
@@ -437,7 +446,8 @@ CPLXMLNode *VRTRawRasterBand::SerializeToXML(const char *pszVRTPath)
         return nullptr;
     }
 
-    CPLXMLNode *psTree = VRTRasterBand::SerializeToXML(pszVRTPath);
+    CPLXMLNode *psTree = VRTRasterBand::SerializeToXML(
+        pszVRTPath, bHasWarnedAboutRAMUsage, nAccRAMUsage);
 
     /* -------------------------------------------------------------------- */
     /*      Set subclass.                                                   */

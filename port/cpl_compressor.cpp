@@ -163,7 +163,7 @@ static bool CPLBloscDecompressor(const void *input_data, size_t input_size,
     if (output_data != nullptr && *output_data != nullptr &&
         output_size != nullptr && *output_size != 0)
     {
-        if (nSafeSize < *output_size)
+        if (*output_size < nSafeSize)
         {
             *output_size = nSafeSize;
             return false;
@@ -438,6 +438,9 @@ static bool CPLZSTDCompressor(const void *input_data, size_t input_size,
     return false;
 }
 
+// CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW because ZSTD_CONTENTSIZE_ERROR expands
+// to (0ULL - 2)...
+CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW
 static size_t CPLZSTDGetDecompressedSize(const void *input_data,
                                          size_t input_size)
 {
@@ -963,36 +966,44 @@ template <class T> inline T swap(T x)
 {
     return x;
 }
+
 template <> inline uint16_t swap<uint16_t>(uint16_t x)
 {
     return CPL_SWAP16(x);
 }
+
 template <> inline int16_t swap<int16_t>(int16_t x)
 {
     return CPL_SWAP16(x);
 }
+
 template <> inline uint32_t swap<uint32_t>(uint32_t x)
 {
     return CPL_SWAP32(x);
 }
+
 template <> inline int32_t swap<int32_t>(int32_t x)
 {
     return CPL_SWAP32(x);
 }
+
 template <> inline uint64_t swap<uint64_t>(uint64_t x)
 {
     return CPL_SWAP64(x);
 }
+
 template <> inline int64_t swap<int64_t>(int64_t x)
 {
     return CPL_SWAP64(x);
 }
+
 template <> inline float swap<float>(float x)
 {
     float ret = x;
     CPL_SWAP32PTR(&ret);
     return ret;
 }
+
 template <> inline double swap<double>(double x)
 {
     double ret = x;
@@ -1015,10 +1026,12 @@ CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW inline T SubNoOverflow(T left, T right)
     memcpy(&ret, &leftU, sizeof(ret));
     return leftU;
 }
+
 template <> inline float SubNoOverflow<float>(float x, float y)
 {
     return x - y;
 }
+
 template <> inline double SubNoOverflow<double>(double x, double y)
 {
     return x - y;
@@ -1452,10 +1465,10 @@ static bool CPLZlibDecompressor(const void *input_data, size_t input_size,
             *output_size = 0;
             return false;
         }
-        if (nullptr == CPLZLibInflate(input_data, input_size, tmpOutBuffer,
-                                      nOutSize, &nOutSize))
+        tmpOutBuffer = CPLZLibInflateEx(input_data, input_size, tmpOutBuffer,
+                                        nOutSize, true, &nOutSize);
+        if (!tmpOutBuffer)
         {
-            VSIFree(tmpOutBuffer);
             *output_size = 0;
             return false;
         }
@@ -1477,10 +1490,10 @@ static bool CPLZlibDecompressor(const void *input_data, size_t input_size,
             return false;
         }
         size_t nOutSizeOut = 0;
-        if (nullptr == CPLZLibInflate(input_data, input_size, tmpOutBuffer,
-                                      nOutSize, &nOutSizeOut))
+        tmpOutBuffer = CPLZLibInflateEx(input_data, input_size, tmpOutBuffer,
+                                        nOutSize, true, &nOutSizeOut);
+        if (!tmpOutBuffer)
         {
-            VSIFree(tmpOutBuffer);
             *output_size = 0;
             return false;
         }
@@ -1507,10 +1520,12 @@ CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW inline T AddNoOverflow(T left, T right)
     memcpy(&ret, &leftU, sizeof(ret));
     return leftU;
 }
+
 template <> inline float AddNoOverflow<float>(float x, float y)
 {
     return x + y;
 }
+
 template <> inline double AddNoOverflow<double>(double x, double y)
 {
     return x + y;
@@ -2015,4 +2030,5 @@ void CPLDestroyCompressorRegistry(void)
     CPLDestroyCompressorRegistryInternal(gpCompressors);
     CPLDestroyCompressorRegistryInternal(gpDecompressors);
 }
+
 /*! @endcond */

@@ -98,8 +98,17 @@ def test_ogr_esrijson_read_point():
 
     extent = (2, 2, 49, 49)
 
-    rc = validate_layer(lyr, "esripoint", 1, ogr.wkbPoint, 4, extent)
+    rc = validate_layer(lyr, "esripoint", 1, ogr.wkbPoint, 7, extent)
     assert rc
+
+    layer_defn = lyr.GetLayerDefn()
+
+    fld_defn = layer_defn.GetFieldDefn(layer_defn.GetFieldIndex("objectid"))
+    assert fld_defn.GetAlternativeName() == "Object ID"
+
+    fld_defn = layer_defn.GetFieldDefn(layer_defn.GetFieldIndex("fooDate"))
+    assert fld_defn.GetType() == ogr.OFTDateTime
+    assert fld_defn.GetWidth() == 0
 
     ref = lyr.GetSpatialRef()
     gcs = int(ref.GetAuthorityCode("GEOGCS"))
@@ -107,26 +116,15 @@ def test_ogr_esrijson_read_point():
     assert gcs == 4326, "Spatial reference was not valid"
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("POINT(2 49)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "POINT(2 49)")
 
-    if feature.GetFID() != 1:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsInteger("fooInt") != 2:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsDouble("fooDouble") != 3.4:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsString("fooString") != "56":
-        feature.DumpReadable()
-        pytest.fail()
+    assert feature.GetFID() == 1
+    assert feature["fooSmallInt"] == 2
+    assert feature["fooInt"] == 1234567890
+    assert feature["fooSingle"] == 1.5
+    assert feature["fooDouble"] == 3.4
+    assert feature["fooString"] == "56"
+    assert feature["fooDate"] == "2021/12/31 00:00:00+00"
 
     lyr = None
     ds = None
@@ -151,10 +149,7 @@ def test_ogr_esrijson_read_linestring():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("LINESTRING (2 49,3 50)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "LINESTRING (2 49,3 50)")
 
     lyr = None
     ds = None
@@ -178,12 +173,9 @@ def test_ogr_esrijson_read_linestring():
     )
     lyr = ds.GetLayer(0)
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt(
-        "MULTILINESTRING ((2 49,2.1 49.1),(3 50,3.1 50.1))"
+    ogrtest.check_feature_geometry(
+        feature, "MULTILINESTRING ((2 49,2.1 49.1),(3 50,3.1 50.1))"
     )
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
 
 
 ###############################################################################
@@ -208,9 +200,7 @@ def test_ogr_esrijson_read_polygon():
     ref_geom = ogr.CreateGeometryFromWkt(
         "MULTIPOLYGON (((2 49,2 50,3 50,3 49,2 49),(2.1 49.1,2.1 49.9,2.9 49.9,2.9 49.1,2.1 49.1)),((-2 49,-2 50,-3 50,-3 49,-2 49)))"
     )
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, ref_geom)
 
     lyr = None
     ds = None
@@ -246,10 +236,7 @@ def test_ogr_esrijson_read_multipoint():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("MULTIPOINT (2 49,3 50)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "MULTIPOINT (2 49,3 50)")
 
     lyr = None
     ds = None
@@ -280,10 +267,7 @@ def test_ogr_esrijson_read_pointz():
     assert gcs == 4326, "Spatial reference was not valid"
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("POINT(2 49 1)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "POINT(2 49 1)")
 
     if feature.GetFID() != 1:
         feature.DumpReadable()
@@ -325,10 +309,7 @@ def test_ogr_esrijson_read_linestringz():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("LINESTRING (2 49 1,3 50 2)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "LINESTRING (2 49 1,3 50 2)")
 
     lyr = None
     ds = None
@@ -354,10 +335,7 @@ def test_ogr_esrijson_read_multipointz():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("MULTIPOINT (2 49 1,3 50 2)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "MULTIPOINT (2 49 1,3 50 2)")
 
     lyr = None
     ds = None
@@ -383,12 +361,9 @@ def test_ogr_esrijson_read_polygonz():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt(
-        "POLYGON ((2 49 1,2 50 2,3 50 3,3 49 4,2 49 1))"
+    ogrtest.check_feature_geometry(
+        feature, "POLYGON ((2 49 1,2 50 2,3 50 3,3 49 4,2 49 1))"
     )
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
 
     lyr = None
     ds = None
@@ -413,10 +388,7 @@ def test_ogr_esrijson_read_multipointm():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("MULTIPOINT M ((2 49 1),(3 50 2))")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "MULTIPOINT M ((2 49 1),(3 50 2))")
 
     lyr = None
     ds = None
@@ -441,10 +413,7 @@ def test_ogr_esrijson_read_pointz_withou_z():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("MULTIPOINT (2 49,3 50)")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "MULTIPOINT (2 49,3 50)")
 
     lyr = None
     ds = None
@@ -469,10 +438,7 @@ def test_ogr_esrijson_read_multipointzm():
     assert rc
 
     feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt("MULTIPOINT ZM ((2 49 1 100),(3 50 2 100))")
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
+    ogrtest.check_feature_geometry(feature, "MULTIPOINT ZM ((2 49 1 100),(3 50 2 100))")
 
     lyr = None
     ds = None
@@ -529,9 +495,8 @@ def test_ogr_esrijson_featureservice_scrolling(prefix):
             gdal.FileFromMemBuffer(
                 "/vsimem/esrijson/test.json?resultRecordCount=10", resultOffset0
             )
-            gdal.PushErrorHandler()
-            ds = ogr.Open("/vsimem/esrijson/test.json?resultRecordCount=10")
-            gdal.PopErrorHandler()
+            with gdal.quiet_errors():
+                ds = ogr.Open("/vsimem/esrijson/test.json?resultRecordCount=10")
             lyr = ds.GetLayer(0)
             f = lyr.GetNextFeature()
             assert f is not None and f.GetFID() == 1
@@ -580,9 +545,8 @@ def test_ogr_esrijson_featureservice_scrolling(prefix):
             f = lyr.GetNextFeature()
             assert f is None
 
-            gdal.PushErrorHandler()
-            fc = lyr.GetFeatureCount()
-            gdal.PopErrorHandler()
+            with gdal.quiet_errors():
+                fc = lyr.GetFeatureCount()
             assert fc == 2
 
             gdal.FileFromMemBuffer(
@@ -592,9 +556,8 @@ def test_ogr_esrijson_featureservice_scrolling(prefix):
             fc = lyr.GetFeatureCount()
             assert fc == 123456
 
-            gdal.PushErrorHandler()
-            extent = lyr.GetExtent()
-            gdal.PopErrorHandler()
+            with gdal.quiet_errors():
+                extent = lyr.GetExtent()
             assert extent == (2, 2, 49, 49)
 
             gdal.FileFromMemBuffer(
@@ -699,8 +662,8 @@ def test_ogr_esrijson_read_starting_with_features_geometry():
 
 def test_ogr_esrijson_create_geometry_from_esri_json():
 
-    with gdaltest.error_handler():
-        assert not ogr.CreateGeometryFromEsriJson("error")
+    with pytest.raises(Exception):
+        ogr.CreateGeometryFromEsriJson("error")
 
     g = ogr.CreateGeometryFromEsriJson('{ "x": 2, "y": 49 }')
     assert g.ExportToWkt() == "POINT (2 49)"
@@ -728,3 +691,51 @@ def test_ogr_esrijson_identify_srs():
     sr = lyr.GetSpatialRef()
     assert sr
     assert sr.GetAuthorityCode(None) == "2223"
+
+
+###############################################################################
+# Test for https://github.com/OSGeo/gdal/issues/9996
+
+
+def test_ogr_esrijson_read_CadastralSpecialServices():
+
+    ds = ogr.Open("data/esrijson/GetLatLon.json")
+    lyr = ds.GetLayer(0)
+    sr = lyr.GetSpatialRef()
+    assert sr
+    assert sr.GetAuthorityCode(None) == "4326"
+    assert lyr.GetGeomType() != ogr.wkbNone
+    f = lyr.GetNextFeature()
+    assert f["landdescription"] == "WA330160N0260E0SN070"
+    assert f.GetGeometryRef().GetGeometryType() == ogr.wkbPolygon
+
+
+###############################################################################
+# Test force opening a ESRIJSON file
+
+
+def test_ogr_esrijson_force_opening(tmp_vsimem):
+
+    filename = str(tmp_vsimem / "test.json")
+
+    with open("data/esrijson/esripoint.json", "rb") as fsrc:
+        with gdaltest.vsi_open(filename, "wb") as fdest:
+            fdest.write(fsrc.read(1))
+            fdest.write(b" " * (1000 * 1000))
+            fdest.write(fsrc.read())
+
+    with pytest.raises(Exception):
+        gdal.OpenEx(filename)
+
+    ds = gdal.OpenEx(filename, allowed_drivers=["ESRIJSON"])
+    assert ds.GetDriver().GetDescription() == "ESRIJSON"
+
+
+###############################################################################
+# Test force opening a URL as ESRIJSON
+
+
+def test_ogr_esrijson_force_opening_url():
+
+    drv = gdal.IdentifyDriverEx("http://example.com", allowed_drivers=["ESRIJSON"])
+    assert drv.GetDescription() == "ESRIJSON"

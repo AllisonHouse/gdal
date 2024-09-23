@@ -3750,9 +3750,9 @@ CPLErr HFARenameReferences(HFAHandle hHFA, const char *pszNewBase,
         {
             if (strncmp(aosNL[i], pszOldBase, strlen(pszOldBase)) == 0)
             {
-                CPLString osNew = pszNewBase;
+                std::string osNew = pszNewBase;
                 osNew += aosNL[i].c_str() + strlen(pszOldBase);
-                aosNL[i] = osNew;
+                aosNL[i] = std::move(osNew);
             }
         }
 
@@ -3807,9 +3807,9 @@ CPLErr HFARenameReferences(HFAHandle hHFA, const char *pszNewBase,
         // Update the filename.
         if (strncmp(osFileName, pszOldBase, strlen(pszOldBase)) == 0)
         {
-            CPLString osNew = pszNewBase;
+            std::string osNew = pszNewBase;
             osNew += osFileName.c_str() + strlen(pszOldBase);
-            osFileName = osNew;
+            osFileName = std::move(osNew);
         }
 
         // Grow the node if needed.
@@ -3859,9 +3859,9 @@ CPLErr HFARenameReferences(HFAHandle hHFA, const char *pszNewBase,
         // Update the filename.
         if (strncmp(osFileName, pszOldBase, strlen(pszOldBase)) == 0)
         {
-            CPLString osNew = pszNewBase;
-            osNew += osFileName.c_str() + strlen(pszOldBase);
-            osFileName = osNew;
+            std::string osNew = pszNewBase;
+            osNew += (osFileName.c_str() + strlen(pszOldBase));
+            osFileName = std::move(osNew);
         }
 
         apoNodeList[iNode]->SetStringField("dependent.string", osFileName);
@@ -3926,13 +3926,22 @@ static int ESRIToUSGSZone(int nESRIZone)
 
 static const char *const apszDatumMap[] = {
     // Imagine name, WKT name.
-    "NAD27",        "North_American_Datum_1927",
-    "NAD83",        "North_American_Datum_1983",
-    "WGS 84",       "WGS_1984",
-    "WGS 1972",     "WGS_1972",
-    "GDA94",        "Geocentric_Datum_of_Australia_1994",
-    "Pulkovo 1942", "Pulkovo_1942",
-    nullptr,        nullptr};
+    "NAD27",
+    "North_American_Datum_1927",
+    "NAD83",
+    "North_American_Datum_1983",
+    "WGS 84",
+    "WGS_1984",
+    "WGS 1972",
+    "WGS_1972",
+    "GDA94",
+    "Geocentric_Datum_of_Australia_1994",
+    "Pulkovo 1942",
+    "Pulkovo_1942",
+    "Geodetic Datum 1949",
+    "New_Zealand_Geodetic_Datum_1949",
+    nullptr,
+    nullptr};
 
 const char *const *HFAGetDatumMap()
 {
@@ -3989,6 +3998,8 @@ static const char *const apszUnitMap[] = {"meters",
                                           "0.9144",
                                           "yd",
                                           "0.9144",
+                                          "clarke_yard",
+                                          "0.9143917962",
                                           "miles",
                                           "1304.544",
                                           "mile",
@@ -4031,7 +4042,7 @@ HFAPCSStructToOSR(const Eprj_Datum *psDatum, const Eprj_ProParameters *psPro,
 
     // We make a particular effort to adapt the mapinfo->proname as
     // the PROJCS[] name per #2422.
-    auto poSRS = cpl::make_unique<OGRSpatialReference>();
+    auto poSRS = std::make_unique<OGRSpatialReference>();
     poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
     if (psPro == nullptr && psMapInfo != nullptr)
@@ -4349,10 +4360,12 @@ HFAPCSStructToOSR(const Eprj_Datum *psDatum, const Eprj_ProParameters *psPro,
             break;
 
         case EPRJ_HOTINE_OBLIQUE_MERCATOR_AZIMUTH_CENTER:
-            poSRS->SetHOMAC(psPro->proParams[5] * R2D,
-                            psPro->proParams[4] * R2D,
-                            psPro->proParams[3] * R2D, 0.0, psPro->proParams[2],
-                            psPro->proParams[6], psPro->proParams[7]);
+            poSRS->SetHOMAC(
+                psPro->proParams[5] * R2D, psPro->proParams[4] * R2D,
+                psPro->proParams[3] * R2D,
+                psPro->proParams[3] *
+                    R2D,  // We reuse azimuth as rectified_grid_angle
+                psPro->proParams[2], psPro->proParams[6], psPro->proParams[7]);
             break;
 
         case EPRJ_ROBINSON:
@@ -4569,14 +4582,13 @@ HFAPCSStructToOSR(const Eprj_Datum *psDatum, const Eprj_ProParameters *psPro,
 
         case EPRJ_VERTICAL_NEAR_SIDE_PERSPECTIVE:
         {
-            poSRS->SetProjection("Vertical_Near_Side_Perspective");
-            poSRS->SetNormProjParm(SRS_PP_LATITUDE_OF_CENTER,
-                                   psPro->proParams[5] * R2D);
-            poSRS->SetNormProjParm(SRS_PP_LONGITUDE_OF_CENTER,
-                                   psPro->proParams[4] * R2D);
-            poSRS->SetNormProjParm("height", psPro->proParams[2]);
-            poSRS->SetNormProjParm(SRS_PP_FALSE_EASTING, psPro->proParams[6]);
-            poSRS->SetNormProjParm(SRS_PP_FALSE_NORTHING, psPro->proParams[7]);
+            poSRS->SetVerticalPerspective(
+                psPro->proParams[5] * R2D,  // dfTopoOriginLat
+                psPro->proParams[4] * R2D,  // dfTopoOriginLon
+                0,                          // dfTopoOriginHeight
+                psPro->proParams[2],        // dfViewPointHeight
+                psPro->proParams[6],        // dfFalseEasting
+                psPro->proParams[7]);       // dfFalseNorthing
         }
         break;
 
@@ -4727,12 +4739,19 @@ HFAPCSStructToOSR(const Eprj_Datum *psDatum, const Eprj_ProParameters *psPro,
                                   -psDatum->params[4] * RAD2ARCSEC,
                                   -psDatum->params[5] * RAD2ARCSEC,
                                   psDatum->params[6] * 1e+6);
+                poSRS->StripTOWGS84IfKnownDatumAndAllowed();
             }
         }
     }
 
     // Try to insert authority information if possible.
     poSRS->AutoIdentifyEPSG();
+
+    auto poSRSBestMatch = poSRS->FindBestMatch(90, nullptr, nullptr);
+    if (poSRSBestMatch)
+    {
+        poSRS.reset(poSRSBestMatch);
+    }
 
     return poSRS;
 }

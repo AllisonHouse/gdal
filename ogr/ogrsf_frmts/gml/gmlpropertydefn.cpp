@@ -40,11 +40,9 @@
 /************************************************************************/
 
 GMLPropertyDefn::GMLPropertyDefn(const char *pszName, const char *pszSrcElement)
-    : m_pszName(CPLStrdup(pszName)), m_eType(GMLPT_Untyped), m_nWidth(0),
-      m_nPrecision(0),
+    : m_pszName(CPLStrdup(pszName)),
       m_pszSrcElement(pszSrcElement ? CPLStrdup(pszSrcElement) : nullptr),
-      m_nSrcElementLen(pszSrcElement ? strlen(pszSrcElement) : 0),
-      m_pszCondition(nullptr), m_bNullable(true)
+      m_nSrcElementLen(pszSrcElement ? strlen(pszSrcElement) : 0)
 {
 }
 
@@ -217,15 +215,16 @@ void GMLPropertyDefn::AnalysePropertyValue(const GMLProperty *psGMLProperty,
 /*                       GMLGeometryPropertyDefn                        */
 /************************************************************************/
 
-GMLGeometryPropertyDefn::GMLGeometryPropertyDefn(const char *pszName,
-                                                 const char *pszSrcElement,
-                                                 int nType, int nAttributeIndex,
-                                                 bool bNullable)
+GMLGeometryPropertyDefn::GMLGeometryPropertyDefn(
+    const char *pszName, const char *pszSrcElement, OGRwkbGeometryType nType,
+    int nAttributeIndex, bool bNullable,
+    const OGRGeomCoordinatePrecision &oCoordPrec)
     : m_pszName((pszName == nullptr || pszName[0] == '\0')
                     ? CPLStrdup(pszSrcElement)
                     : CPLStrdup(pszName)),
       m_pszSrcElement(CPLStrdup(pszSrcElement)), m_nGeometryType(nType),
-      m_nAttributeIndex(nAttributeIndex), m_bNullable(bNullable)
+      m_nAttributeIndex(nAttributeIndex), m_bNullable(bNullable),
+      m_oCoordPrecision(oCoordPrec)
 {
 }
 

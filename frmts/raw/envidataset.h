@@ -111,6 +111,7 @@ class ENVIDataset final : public RawDataset
         BIL,
         BIP
     } interleave;
+
     static int GetEnviType(GDALDataType eType);
 
     CPL_DISALLOW_COPY_ASSIGN(ENVIDataset)
@@ -164,10 +165,7 @@ class ENVIRasterBand final : public RawRasterBand
     ENVIRasterBand(GDALDataset *poDSIn, int nBandIn, VSILFILE *fpRawIn,
                    vsi_l_offset nImgOffsetIn, int nPixelOffsetIn,
                    int nLineOffsetIn, GDALDataType eDataTypeIn,
-                   int bNativeOrderIn);
-    ~ENVIRasterBand() override
-    {
-    }
+                   RawRasterBand::ByteOrder eByteOrderIn);
 
     void SetDescription(const char *) override;
     CPLErr SetNoDataValue(double) override;

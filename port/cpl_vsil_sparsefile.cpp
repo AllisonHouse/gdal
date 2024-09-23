@@ -77,6 +77,7 @@ class VSISparseFileHandle : public VSIVirtualHandle
 
     VSISparseFileFilesystemHandler *m_poFS = nullptr;
     bool bEOF = false;
+    bool bError = false;
 
   public:
     explicit VSISparseFileHandle(VSISparseFileFilesystemHandler *poFS)
@@ -93,7 +94,9 @@ class VSISparseFileHandle : public VSIVirtualHandle
     vsi_l_offset Tell() override;
     size_t Read(void *pBuffer, size_t nSize, size_t nMemb) override;
     size_t Write(const void *pBuffer, size_t nSize, size_t nMemb) override;
+    void ClearErr() override;
     int Eof() override;
+    int Error() override;
     int Close() override;
 };
 
@@ -128,16 +131,18 @@ class VSISparseFileFilesystemHandler : public VSIFilesystemHandler
     int Unlink(const char *pszFilename) override;
     int Mkdir(const char *pszDirname, long nMode) override;
     int Rmdir(const char *pszDirname) override;
-    char **ReadDir(const char *pszDirname) override;
+    char **ReadDirEx(const char *pszDirname, int nMaxFiles) override;
 
     int GetRecCounter()
     {
         return oRecOpenCount[CPLGetPID()];
     }
+
     void IncRecCounter()
     {
         oRecOpenCount[CPLGetPID()]++;
     }
+
     void DecRecCounter()
     {
         oRecOpenCount[CPLGetPID()]--;
@@ -275,6 +280,11 @@ size_t VSISparseFileHandle::Read(void *pBuffer, size_t nSize, size_t nCount)
                                              1, nExtraBytes);
         nCurOffset = nCurOffsetSave;
         bEOF = bEOFSave;
+        if (nBytesRead < nExtraBytes)
+        {
+            // A short read in a region of a sparse file is always an error
+            bError = true;
+        }
 
         nBytesReturnCount += nBytesRead;
         nBytesRequested -= nExtraBytes;
@@ -311,6 +321,7 @@ size_t VSISparseFileHandle::Read(void *pBuffer, size_t nSize, size_t nCount)
             }
             if (aoRegions[iRegion].fp == nullptr)
             {
+                bError = true;
                 return 0;
             }
         }
@@ -319,13 +330,21 @@ size_t VSISparseFileHandle::Read(void *pBuffer, size_t nSize, size_t nCount)
                       nCurOffset - aoRegions[iRegion].nDstOffset +
                           aoRegions[iRegion].nSrcOffset,
                       SEEK_SET) != 0)
+        {
+            bError = true;
             return 0;
+        }
 
         m_poFS->IncRecCounter();
         const size_t nBytesRead =
             VSIFReadL(pBuffer, 1, static_cast<size_t>(nBytesRequested),
                       aoRegions[iRegion].fp);
         m_poFS->DecRecCounter();
+        if (nBytesRead < static_cast<size_t>(nBytesRequested))
+        {
+            // A short read in a region of a sparse file is always an error
+            bError = true;
+        }
 
         nBytesReturnCount += nBytesRead;
     }
@@ -354,6 +373,32 @@ int VSISparseFileHandle::Eof()
 
 {
     return bEOF ? 1 : 0;
+}
+
+/************************************************************************/
+/*                               Error()                                */
+/************************************************************************/
+
+int VSISparseFileHandle::Error()
+
+{
+    return bError ? 1 : 0;
+}
+
+/************************************************************************/
+/*                             ClearErr()                               */
+/************************************************************************/
+
+void VSISparseFileHandle::ClearErr()
+
+{
+    for (const auto &region : aoRegions)
+    {
+        if (region.fp)
+            region.fp->ClearErr();
+    }
+    bEOF = false;
+    bError = false;
 }
 
 /************************************************************************/
@@ -485,7 +530,7 @@ int VSISparseFileFilesystemHandler::Stat(const char *pszFilename,
         return -1;
 
     poFile->Seek(0, SEEK_END);
-    const size_t nLength = static_cast<size_t>(poFile->Tell());
+    const vsi_l_offset nLength = poFile->Tell();
     delete poFile;
 
     const int nResult =
@@ -528,10 +573,11 @@ int VSISparseFileFilesystemHandler::Rmdir(const char * /* pszPathname */)
 }
 
 /************************************************************************/
-/*                              ReadDir()                               */
+/*                              ReadDirEx()                             */
 /************************************************************************/
 
-char **VSISparseFileFilesystemHandler::ReadDir(const char * /* pszPath */)
+char **VSISparseFileFilesystemHandler::ReadDirEx(const char * /* pszPath */,
+                                                 int /* nMaxFiles */)
 {
     errno = EACCES;
     return nullptr;

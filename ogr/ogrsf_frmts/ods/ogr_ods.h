@@ -55,6 +55,9 @@ class OGRODSLayer final : public OGRMemLayer
     bool bHasHeaderLine;
     OGRFeatureQuery *m_poAttrQueryODS;
 
+    GIntBig TranslateFIDFromMemLayer(GIntBig nFID) const;
+    GIntBig TranslateFIDToMemLayer(GIntBig nFID) const;
+
   public:
     OGRODSLayer(OGRODSDataSource *poDSIn, const char *pszName,
                 bool bUpdateIn = FALSE);
@@ -66,6 +69,7 @@ class OGRODSLayer final : public OGRMemLayer
     {
         return bHasHeaderLine;
     }
+
     void SetHasHeaderLine(bool bIn)
     {
         bHasHeaderLine = bIn;
@@ -75,10 +79,12 @@ class OGRODSLayer final : public OGRMemLayer
     {
         return OGRMemLayer::GetLayerDefn()->GetName();
     }
+
     OGRwkbGeometryType GetGeomType() override
     {
         return wkbNone;
     }
+
     virtual OGRSpatialReference *GetSpatialRef() override
     {
         return nullptr;
@@ -88,6 +94,11 @@ class OGRODSLayer final : public OGRMemLayer
     virtual OGRFeature *GetNextFeature() override;
     virtual OGRFeature *GetFeature(GIntBig nFeatureId) override;
     virtual OGRErr ISetFeature(OGRFeature *poFeature) override;
+    OGRErr IUpdateFeature(OGRFeature *poFeature, int nUpdatedFieldsCount,
+                          const int *panUpdatedFieldsIdx,
+                          int nUpdatedGeomFieldsCount,
+                          const int *panUpdatedGeomFieldsIdx,
+                          bool bUpdateStyleString) override;
     virtual OGRErr DeleteFeature(GIntBig nFID) override;
 
     virtual GIntBig GetFeatureCount(int) override;
@@ -101,19 +112,16 @@ class OGRODSLayer final : public OGRMemLayer
     {
         return OGRMemLayer::GetNextFeature();
     }
+
     OGRErr SetFeatureWithoutFIDHack(OGRFeature *poFeature)
     {
         SetUpdated();
         return OGRMemLayer::ISetFeature(poFeature);
     }
 
-    OGRErr ICreateFeature(OGRFeature *poFeature) override
-    {
-        SetUpdated();
-        return OGRMemLayer::ICreateFeature(poFeature);
-    }
+    OGRErr ICreateFeature(OGRFeature *poFeature) override;
 
-    virtual OGRErr CreateField(OGRFieldDefn *poField,
+    virtual OGRErr CreateField(const OGRFieldDefn *poField,
                                int bApproxOK = TRUE) override
     {
         SetUpdated();
@@ -140,6 +148,8 @@ class OGRODSLayer final : public OGRMemLayer
     }
 
     virtual OGRErr SyncToDisk() override;
+
+    GDALDataset *GetDataset() override;
 };
 
 /************************************************************************/
@@ -234,7 +244,7 @@ class OGRODSDataSource final : public GDALDataset
     void FillRepeatedCells(bool wasLastCell);
 
   public:
-    OGRODSDataSource();
+    explicit OGRODSDataSource(CSLConstList papszOpenOptionsIn);
     virtual ~OGRODSDataSource();
     CPLErr Close() override;
 
@@ -247,10 +257,10 @@ class OGRODSDataSource final : public GDALDataset
 
     virtual int TestCapability(const char *) override;
 
-    virtual OGRLayer *ICreateLayer(const char *pszLayerName,
-                                   OGRSpatialReference *poSRS,
-                                   OGRwkbGeometryType eType,
-                                   char **papszOptions) override;
+    OGRLayer *ICreateLayer(const char *pszName,
+                           const OGRGeomFieldDefn *poGeomFieldDefn,
+                           CSLConstList papszOptions) override;
+
     virtual OGRErr DeleteLayer(int iLayer) override;
 
     virtual CPLErr FlushCache(bool bAtClosing) override;
@@ -267,6 +277,7 @@ class OGRODSDataSource final : public GDALDataset
     {
         return bUpdatable;
     }
+
     void SetUpdated()
     {
         bUpdated = true;

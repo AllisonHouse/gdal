@@ -70,6 +70,8 @@ class VSIPluginFilesystemHandler : public VSIFilesystemHandler
     VSIRangeStatus GetRangeStatus(void *pFile, vsi_l_offset nOffset,
                                   vsi_l_offset nLength);
     int Eof(void *pFile);
+    int Error(void *pFile);
+    void ClearErr(void *pFile);
     size_t Write(void *pFile, const void *pBuffer, size_t nSize, size_t nCount);
     int Flush(void *pFile);
     int Truncate(void *pFile, vsi_l_offset nNewSize);
@@ -90,10 +92,6 @@ class VSIPluginFilesystemHandler : public VSIFilesystemHandler
     int Rename(const char *oldpath, const char * /*newpath*/) override;
     int Mkdir(const char *pszDirname, long nMode) override;
     int Rmdir(const char *pszDirname) override;
-    char **ReadDir(const char *pszDirname) override
-    {
-        return ReadDirEx(pszDirname, 0);
-    }
     char **ReadDirEx(const char *pszDirname, int nMaxFiles) override;
     char **SiblingFiles(const char *pszFilename) override;
     int HasOptimizedReadMultiRange(const char *pszPath) override;
@@ -125,7 +123,9 @@ class VSIPluginHandle : public VSIVirtualHandle
                     const size_t *panSizes) override;
     VSIRangeStatus GetRangeStatus(vsi_l_offset nOffset,
                                   vsi_l_offset nLength) override;
+    void ClearErr() override;
     int Eof() override;
+    int Error() override;
     size_t Write(const void *pBuffer, size_t nSize, size_t nCount) override;
     int Flush() override;
     int Truncate(vsi_l_offset nNewSize) override;

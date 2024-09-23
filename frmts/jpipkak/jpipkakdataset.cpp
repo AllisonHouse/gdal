@@ -31,6 +31,8 @@
 #include "gdal_frmts.h"
 #include "jpipkakdataset.h"
 
+#include "jpipkakdrivercore.h"
+
 /*
 ** The following are for testing premature stream termination support.
 ** This is a mechanism to test handling of failed or incomplete reads
@@ -747,8 +749,7 @@ int JPIPKAKDataset::Initialize(const char *pszDatasetName, int bReinitializing)
     }
 
     // create in memory file using vsimem
-    CPLString osFileBoxName;
-    osFileBoxName.Printf("/vsimem/jpip/%s.dat", pszCid);
+    const CPLString osFileBoxName(VSIMemGenerateHiddenFilename("jpip"));
     VSILFILE *fpLL = VSIFOpenL(osFileBoxName.c_str(), "w+");
     poCache->set_read_scope(KDU_META_DATABIN, nCodestream, 0);
     kdu_byte *pabyBuffer = (kdu_byte *)CPLMalloc(nLen);
@@ -1142,7 +1143,7 @@ CPLErr JPIPKAKDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                                  int nXSize, int nYSize, void *pData,
                                  int nBufXSize, int nBufYSize,
                                  GDALDataType eBufType, int nBandCount,
-                                 int *panBandMap, GSpacing nPixelSpace,
+                                 BANDMAP_TYPE panBandMap, GSpacing nPixelSpace,
                                  GSpacing nLineSpace, GSpacing nBandSpace,
                                  GDALRasterIOExtraArg *psExtraArg)
 
@@ -1162,8 +1163,9 @@ CPLErr JPIPKAKDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
     /* -------------------------------------------------------------------- */
     GDALAsyncReader *ario = BeginAsyncReader(
         nXOff, nYOff, nXSize, nYSize, pData, nBufXSize, nBufYSize, eBufType,
-        nBandCount, panBandMap, static_cast<int>(nPixelSpace),
-        static_cast<int>(nLineSpace), static_cast<int>(nBandSpace), nullptr);
+        nBandCount, const_cast<int *>(panBandMap),
+        static_cast<int>(nPixelSpace), static_cast<int>(nLineSpace),
+        static_cast<int>(nBandSpace), nullptr);
 
     if (ario == nullptr)
         return CE_Failure;
@@ -1449,18 +1451,11 @@ void GDALRegister_JPIPKAK()
     if (!GDAL_CHECK_VERSION("JPIPKAK driver"))
         return;
 
-    if (GDALGetDriverByName("JPIPKAK") != nullptr)
+    if (GDALGetDriverByName(DRIVER_NAME) != nullptr)
         return;
 
     GDALDriver *poDriver = new GDALDriver();
-
-    poDriver->SetDescription("JPIPKAK");
-    poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
-    poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "JPIP (based on Kakadu)");
-    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC,
-                              "drivers/raster/jpipkak.html");
-    poDriver->SetMetadataItem(GDAL_DMD_MIMETYPE, "image/jpp-stream");
-
+    JPIPKAKDriverSetCommonMetadata(poDriver);
     poDriver->pfnOpen = JPIPKAKDataset::Open;
     GetGDALDriverManager()->RegisterDriver(poDriver);
 }

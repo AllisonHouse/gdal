@@ -56,6 +56,9 @@ static int OGRCSVDriverIdentify(GDALOpenInfo *poOpenInfo)
 {
     if (poOpenInfo->fpL != nullptr)
     {
+        if (poOpenInfo->IsSingleAllowedDriver("CSV"))
+            return TRUE;
+
         const CPLString osBaseFilename =
             CPLGetFilename(poOpenInfo->pszFilename);
         const CPLString osExt =
@@ -114,6 +117,9 @@ static int OGRCSVDriverIdentify(GDALOpenInfo *poOpenInfo)
     }
     else if (poOpenInfo->bIsDirectory)
     {
+        if (poOpenInfo->IsSingleAllowedDriver("CSV"))
+            return TRUE;
+
         return -1;  // Unsure.
     }
 
@@ -160,14 +166,17 @@ static GDALDataset *OGRCSVDriverOpen(GDALOpenInfo *poOpenInfo)
         }
     }
 
-    OGRCSVDataSource *poDS = new OGRCSVDataSource();
+    auto poDSUniquePtr = std::make_unique<OGRCSVDataSource>();
 
-    if (!poDS->Open(poOpenInfo->pszFilename, poOpenInfo->eAccess == GA_Update,
-                    FALSE, poOpenInfo->papszOpenOptions))
+    if (!poDSUniquePtr->Open(poOpenInfo->pszFilename,
+                             poOpenInfo->eAccess == GA_Update, false,
+                             poOpenInfo->papszOpenOptions,
+                             poOpenInfo->IsSingleAllowedDriver("CSV")))
     {
-        delete poDS;
-        poDS = nullptr;
+        poDSUniquePtr.reset();
     }
+
+    auto poDS = poDSUniquePtr.release();
 
     if (poOpenInfo->eAccess == GA_Update && poDS != nullptr)
     {
@@ -238,15 +247,16 @@ OGRCSVDriverCreate(const char *pszName, CPL_UNUSED int nBands,
     }
 
     // Force it to open as a datasource.
-    OGRCSVDataSource *poDS = new OGRCSVDataSource();
+    auto poDS = std::make_unique<OGRCSVDataSource>();
 
     if (EQUAL(CPLGetExtension(pszName), "csv"))
     {
         poDS->CreateForSingleFile(osDirName, pszName);
     }
-    else if (!poDS->Open(osDirName, TRUE, TRUE))
+    else if (!poDS->Open(osDirName, /* bUpdate = */ true,
+                         /* bForceAccept = */ true, nullptr,
+                         /* bSingleDriver = */ true))
     {
-        delete poDS;
         return nullptr;
     }
 
@@ -254,7 +264,7 @@ OGRCSVDriverCreate(const char *pszName, CPL_UNUSED int nBands,
     if (pszGeometry != nullptr && EQUAL(pszGeometry, "AS_WKT"))
         poDS->EnableGeometryFields();
 
-    return poDS;
+    return poDS.release();
 }
 
 /************************************************************************/
@@ -302,6 +312,8 @@ void RegisterOGRCSV()
     poDriver->SetMetadataItem(GDAL_DCAP_CREATE_FIELD, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_DELETE_FIELD, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_REORDER_FIELDS, "YES");
+    poDriver->SetMetadataItem(GDAL_DMD_CREATION_FIELD_DEFN_FLAGS,
+                              "WidthPrecision");
     poDriver->SetMetadataItem(GDAL_DMD_ALTER_FIELD_DEFN_FLAGS,
                               "Name Type WidthPrecision");
 
@@ -314,6 +326,10 @@ void RegisterOGRCSV()
     poDriver->SetMetadataItem(GDAL_DMD_EXTENSIONS, "csv tsv psv");
     poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "drivers/vector/csv.html");
     poDriver->SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL SQLITE");
+    poDriver->SetMetadataItem(GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN,
+                              "YES");
+    poDriver->SetMetadataItem(
+        GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR, "YES");
 
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST,
                               "<CreationOptionList>"
@@ -333,7 +349,7 @@ void RegisterOGRCSV()
         "    <Value>TAB</Value>"
         "    <Value>SPACE</Value>"
         "  </Option>"
-#ifdef WIN32
+#ifdef _WIN32
         "  <Option name='LINEFORMAT' type='string-select' "
         "description='end-of-line sequence' default='CRLF'>"
 #else
@@ -369,15 +385,15 @@ void RegisterOGRCSV()
     poDriver->SetMetadataItem(
         GDAL_DMD_OPENOPTIONLIST,
         "<OpenOptionList>"
-#if 0
-"  <Option name='SEPARATOR' type='string-select' description='field separator' default='AUTO'>"
-"    <Value>AUTO</Value>"
-"    <Value>COMMA</Value>"
-"    <Value>SEMICOLON</Value>"
-"    <Value>TAB</Value>"
-"    <Value>SPACE</Value>"
-"  </Option>"
-#endif
+        "  <Option name='SEPARATOR' type='string-select' "
+        "description='field separator' default='AUTO'>"
+        "    <Value>AUTO</Value>"
+        "    <Value>COMMA</Value>"
+        "    <Value>SEMICOLON</Value>"
+        "    <Value>TAB</Value>"
+        "    <Value>SPACE</Value>"
+        "    <Value>PIPE</Value>"
+        "  </Option>"
         "  <Option name='MERGE_SEPARATOR' type='boolean' description='whether "
         "to merge consecutive separators' default='NO'/>"
         "  <Option name='AUTODETECT_TYPE' type='boolean' description='whether "
@@ -435,6 +451,7 @@ void RegisterOGRCSV()
                               "StringList");
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONFIELDDATASUBTYPES,
                               "Boolean Int16 Float32");
+    poDriver->SetMetadataItem(GDAL_DCAP_HONOR_GEOM_COORDINATE_PRECISION, "YES");
 
     poDriver->pfnOpen = OGRCSVDriverOpen;
     poDriver->pfnIdentify = OGRCSVDriverIdentify;

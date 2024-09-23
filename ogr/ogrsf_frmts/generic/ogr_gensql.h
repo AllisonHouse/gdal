@@ -55,47 +55,50 @@
 /*                        OGRGenSQLResultsLayer                         */
 /************************************************************************/
 
+class swq_select;
+
 class OGRGenSQLResultsLayer final : public OGRLayer
 {
   private:
-    GDALDataset *poSrcDS;
-    OGRLayer *poSrcLayer;
-    void *pSelectInfo;
+    GDALDataset *m_poSrcDS = nullptr;
+    OGRLayer *m_poSrcLayer = nullptr;
+    std::unique_ptr<swq_select> m_pSelectInfo{};
 
     std::string m_osInitialWHERE{};
     bool m_bForwardWhereToSourceLayer = true;
+    bool m_bEOF = false;
 
-    OGRLayer **papoTableLayers;
+    // Array of source layers (owned by m_poSrcDS or m_apoExtraDS)
+    std::vector<OGRLayer *> m_apoTableLayers{};
 
-    OGRFeatureDefn *poDefn;
+    // Array of extra datasets when referencing a table/layer by a dataset name
+    std::vector<std::unique_ptr<GDALDataset, GDALDatasetUniquePtrReleaser>>
+        m_apoExtraDS{};
 
-    int *panGeomFieldToSrcGeomField;
+    OGRFeatureDefn *m_poDefn = nullptr;
 
-    size_t nIndexSize;
-    GIntBig *panFIDIndex;
-    int bOrderByValid;
+    std::vector<int> m_anGeomFieldToSrcGeomField{};
 
-    GIntBig nNextIndexFID;
-    OGRFeature *poSummaryFeature;
+    std::vector<GIntBig> m_anFIDIndex{};
+    bool m_bOrderByValid = false;
 
-    int iFIDFieldIndex;
+    GIntBig m_nNextIndexFID = 0;
+    std::unique_ptr<OGRFeature> m_poSummaryFeature{};
 
-    int nExtraDSCount;
-    GDALDataset **papoExtraDS;
+    int m_iFIDFieldIndex = 0;
 
-    GIntBig nIteratedFeatures;
-    std::vector<CPLString> m_oDistinctList;
+    GIntBig m_nIteratedFeatures = -1;
+    std::vector<std::string> m_aosDistinctList{};
 
-    int PrepareSummary();
+    bool PrepareSummary();
 
-    OGRFeature *TranslateFeature(OGRFeature *);
+    std::unique_ptr<OGRFeature> TranslateFeature(std::unique_ptr<OGRFeature>);
     void CreateOrderByIndex();
     void ReadIndexFields(OGRFeature *poSrcFeat, int nOrderItems,
                          OGRField *pasIndexFields);
     void SortIndexSection(const OGRField *pasIndexFields, GIntBig *panMerged,
                           size_t nStart, size_t nEntries);
-    void FreeIndexFields(OGRField *pasIndexFields, size_t l_nIndexSize,
-                         bool bFreeArray = true);
+    void FreeIndexFields(OGRField *pasIndexFields, size_t l_nIndexSize);
     int Compare(const OGRField *pasFirst, const OGRField *pasSecond);
 
     void ClearFilters();
@@ -114,8 +117,9 @@ class OGRGenSQLResultsLayer final : public OGRLayer
     CPL_DISALLOW_COPY_ASSIGN(OGRGenSQLResultsLayer)
 
   public:
-    OGRGenSQLResultsLayer(GDALDataset *poSrcDS, void *pSelectInfo,
-                          OGRGeometry *poSpatFilter, const char *pszWHERE,
+    OGRGenSQLResultsLayer(GDALDataset *poSrcDS,
+                          std::unique_ptr<swq_select> &&pSelectInfo,
+                          const OGRGeometry *poSpatFilter, const char *pszWHERE,
                           const char *pszDialect);
     virtual ~OGRGenSQLResultsLayer();
 
@@ -129,10 +133,12 @@ class OGRGenSQLResultsLayer final : public OGRLayer
     virtual OGRFeatureDefn *GetLayerDefn() override;
 
     virtual GIntBig GetFeatureCount(int bForce = TRUE) override;
+
     virtual OGRErr GetExtent(OGREnvelope *psExtent, int bForce = TRUE) override
     {
         return GetExtent(0, psExtent, bForce);
     }
+
     virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
                              int bForce = TRUE) override;
 
@@ -142,8 +148,27 @@ class OGRGenSQLResultsLayer final : public OGRLayer
     {
         SetSpatialFilter(0, poGeom);
     }
+
     virtual void SetSpatialFilter(int iGeomField, OGRGeometry *) override;
     virtual OGRErr SetAttributeFilter(const char *) override;
+
+    bool GetArrowStream(struct ArrowArrayStream *out_stream,
+                        CSLConstList papszOptions = nullptr) override;
+
+    int GetArrowSchema(struct ArrowArrayStream *stream,
+                       struct ArrowSchema *out_schema) override;
+
+  protected:
+    friend struct OGRGenSQLResultsLayerArrowStreamPrivateData;
+
+    int GetArrowSchemaForwarded(struct ArrowArrayStream *stream,
+                                struct ArrowSchema *out_schema) const;
+
+    int GetNextArrowArray(struct ArrowArrayStream *stream,
+                          struct ArrowArray *out_array) override;
+
+    int GetNextArrowArrayForwarded(struct ArrowArrayStream *stream,
+                                   struct ArrowArray *out_array);
 };
 
 /*! @endcond */

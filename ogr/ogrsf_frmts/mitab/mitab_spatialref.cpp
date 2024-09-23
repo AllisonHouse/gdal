@@ -1150,16 +1150,6 @@ TABFile::GetSpatialRefFromTABProj(const TABProjInfo &sTABProj)
     }
 
     /*-----------------------------------------------------------------
-     * Collect units definition.
-     *----------------------------------------------------------------*/
-    if (sTABProj.nProjId != 0 && sTABProj.nProjId != 1 &&
-        CPLAtof(pszUnitsConv) != 1)
-    {
-        poSpatialRef->SetTargetLinearUnits(nullptr, pszUnitsName,
-                                           CPLAtof(pszUnitsConv));
-    }
-
-    /*-----------------------------------------------------------------
      * Local (nonearth) coordinate systems have no Geographic relationship
      * so we just return from here.
      *----------------------------------------------------------------*/
@@ -1405,6 +1395,17 @@ TABFile::GetSpatialRefFromTABProj(const TABProjInfo &sTABProj)
     }
 
     /*-----------------------------------------------------------------
+     * Apply linear units. Do that only after all above manipulations of
+     * projection parameters.
+     *----------------------------------------------------------------*/
+    if (sTABProj.nProjId != 0 && sTABProj.nProjId != 1 &&
+        CPLAtof(pszUnitsConv) != 1)
+    {
+        poSpatialRef->SetTargetLinearUnits(nullptr, pszUnitsName,
+                                           CPLAtof(pszUnitsConv));
+    }
+
+    /*-----------------------------------------------------------------
      * Special case for Philippine Reference System 1992, to override
      * the MapInfo ellipsoid=8 "Clarke 1866 (modified for Michigan)"
      * by the regular Clarke 1866 of EPSG
@@ -1506,7 +1507,7 @@ static int MITABGetCustomDatum(const OGRSpatialReference *poSpatialRef,
     sTABProj.adDatumParams[0] = -adfTOWGS[3];
     sTABProj.adDatumParams[1] = -adfTOWGS[4];
     sTABProj.adDatumParams[2] = -adfTOWGS[5];
-    sTABProj.adDatumParams[3] = -adfTOWGS[6];
+    sTABProj.adDatumParams[3] = adfTOWGS[6];
 
     int nSpheroidId = -1;
 

@@ -55,11 +55,12 @@ static int OGRGMLDriverIdentify(GDALOpenInfo *poOpenInfo)
     }
     else
     {
-        const char *szPtr = (const char *)poOpenInfo->pabyHeader;
+        const char *szPtr =
+            reinterpret_cast<const char *>(poOpenInfo->pabyHeader);
 
-        if (((unsigned char)szPtr[0] == 0xEF) &&
-            ((unsigned char)szPtr[1] == 0xBB) &&
-            ((unsigned char)szPtr[2] == 0xBF))
+        if ((static_cast<unsigned char>(szPtr[0]) == 0xEF) &&
+            (static_cast<unsigned char>(szPtr[1]) == 0xBB) &&
+            (static_cast<unsigned char>(szPtr[2]) == 0xBF))
         {
             szPtr += 3;
         }
@@ -74,8 +75,11 @@ static int OGRGMLDriverIdentify(GDALOpenInfo *poOpenInfo)
         if (!poOpenInfo->TryToIngest(4096))
             return FALSE;
 
+        if (poOpenInfo->IsSingleAllowedDriver("GML"))
+            return TRUE;
+
         return OGRGMLDataSource::CheckHeader(
-            (const char *)poOpenInfo->pabyHeader);
+            reinterpret_cast<const char *>(poOpenInfo->pabyHeader));
     }
 }
 
@@ -213,6 +217,12 @@ void RegisterOGRGML()
         "currently)' default='YES'/>"
         "  <Option name='REGISTRY' type='string' description='Filename of the "
         "registry with application schemas.'/>"
+        "  <Option name='USE_BBOX' type='boolean' description='Whether "
+        "to use gml:boundedBy at feature level as feature geometry, "
+        "if there are no other geometry' default='NO'/>"
+        "  <Option name='USE_SCHEMA_IMPORT' type='boolean' "
+        "description='Whether "
+        "to read schema for imports along with includes or not' default='NO'/>"
         "</OpenOptionList>");
 
     poDriver->SetMetadataItem(
@@ -283,11 +293,15 @@ void RegisterOGRGML()
                               "IntegerList Integer64List RealList StringList");
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONFIELDDATASUBTYPES,
                               "Boolean Int16 Float32");
+    poDriver->SetMetadataItem(GDAL_DMD_CREATION_FIELD_DEFN_FLAGS,
+                              "WidthPrecision Nullable Unique Comment");
+
     poDriver->SetMetadataItem(GDAL_DCAP_NOTNULL_FIELDS, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_UNIQUE_FIELDS, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_NOTNULL_GEOMFIELDS, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_MULTIPLE_VECTOR_LAYERS, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_HONOR_GEOM_COORDINATE_PRECISION, "YES");
 
     poDriver->pfnOpen = OGRGMLDriverOpen;
     poDriver->pfnIdentify = OGRGMLDriverIdentify;

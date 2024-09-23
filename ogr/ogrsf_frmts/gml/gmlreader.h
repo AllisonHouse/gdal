@@ -80,15 +80,18 @@ typedef struct
 
 class CPL_DLL GMLPropertyDefn
 {
-    char *m_pszName;
-    GMLPropertyType m_eType;
-    int m_nWidth;
-    int m_nPrecision;
-    char *m_pszSrcElement;
-    size_t m_nSrcElementLen;
-    char *m_pszCondition;
-    bool m_bNullable;
+    char *m_pszName = nullptr;
+    GMLPropertyType m_eType = GMLPT_Untyped;
+    int m_nWidth = 0;
+    int m_nPrecision = 0;
+    char *m_pszSrcElement = nullptr;
+    size_t m_nSrcElementLen = 0;
+    char *m_pszCondition = nullptr;
+    bool m_bNullable = true;
     bool m_bUnique = false;
+    std::string m_osDocumentation{};
+
+    CPL_DISALLOW_COPY_ASSIGN(GMLPropertyDefn)
 
   public:
     explicit GMLPropertyDefn(const char *pszName,
@@ -104,37 +107,46 @@ class CPL_DLL GMLPropertyDefn
     {
         return m_eType;
     }
+
     void SetType(GMLPropertyType eType)
     {
         m_eType = eType;
     }
+
     void SetWidth(int nWidth)
     {
         m_nWidth = nWidth;
     }
+
     int GetWidth() const
     {
         return m_nWidth;
     }
+
     void SetPrecision(int nPrecision)
     {
         m_nPrecision = nPrecision;
     }
+
     int GetPrecision() const
     {
         return m_nPrecision;
     }
+
     void SetSrcElement(const char *pszSrcElement);
+
     const char *GetSrcElement() const
     {
         return m_pszSrcElement;
     }
+
     size_t GetSrcElementLen() const
     {
         return m_nSrcElementLen;
     }
 
     void SetCondition(const char *pszCondition);
+
     const char *GetCondition() const
     {
         return m_pszCondition;
@@ -144,6 +156,7 @@ class CPL_DLL GMLPropertyDefn
     {
         m_bNullable = bNullable;
     }
+
     bool IsNullable() const
     {
         return m_bNullable;
@@ -153,9 +166,20 @@ class CPL_DLL GMLPropertyDefn
     {
         m_bUnique = bUnique;
     }
+
     bool IsUnique() const
     {
         return m_bUnique;
+    }
+
+    void SetDocumentation(const std::string &osDocumentation)
+    {
+        m_osDocumentation = osDocumentation;
+    }
+
+    const std::string &GetDocumentation() const
+    {
+        return m_osDocumentation;
     }
 
     void AnalysePropertyValue(const GMLProperty *psGMLProperty,
@@ -174,17 +198,23 @@ class CPL_DLL GMLPropertyDefn
 
 class CPL_DLL GMLGeometryPropertyDefn
 {
-    char *m_pszName;
-    char *m_pszSrcElement;
-    int m_nGeometryType;
-    int m_nAttributeIndex;
-    bool m_bNullable;
+    char *m_pszName = nullptr;
+    char *m_pszSrcElement = nullptr;
+    OGRwkbGeometryType m_nGeometryType = wkbUnknown;
+    const int m_nAttributeIndex = -1;
+    const bool m_bNullable = true;
     bool m_bSRSNameConsistent = true;
     std::string m_osSRSName{};
+    OGRGeomCoordinatePrecision m_oCoordPrecision{};
+
+    CPL_DISALLOW_COPY_ASSIGN(GMLGeometryPropertyDefn)
 
   public:
     GMLGeometryPropertyDefn(const char *pszName, const char *pszSrcElement,
-                            int nType, int nAttributeIndex, bool bNullable);
+                            OGRwkbGeometryType nType, int nAttributeIndex,
+                            bool bNullable,
+                            const OGRGeomCoordinatePrecision &oCoordPrec =
+                                OGRGeomCoordinatePrecision());
     ~GMLGeometryPropertyDefn();
 
     const char *GetName() const
@@ -192,14 +222,16 @@ class CPL_DLL GMLGeometryPropertyDefn
         return m_pszName;
     }
 
-    int GetType() const
+    OGRwkbGeometryType GetType() const
     {
         return m_nGeometryType;
     }
-    void SetType(int nType)
+
+    void SetType(OGRwkbGeometryType nType)
     {
         m_nGeometryType = nType;
     }
+
     const char *GetSrcElement() const
     {
         return m_pszSrcElement;
@@ -215,12 +247,19 @@ class CPL_DLL GMLGeometryPropertyDefn
         return m_bNullable;
     }
 
+    const OGRGeomCoordinatePrecision &GetCoordinatePrecision() const
+    {
+        return m_oCoordPrecision;
+    }
+
     void SetSRSName(const std::string &srsName)
     {
         m_bSRSNameConsistent = true;
         m_osSRSName = srsName;
     }
+
     void MergeSRSName(const std::string &osSRSName);
+
     const std::string &GetSRSName() const
     {
         return m_osSRSName;
@@ -230,6 +269,7 @@ class CPL_DLL GMLGeometryPropertyDefn
 /************************************************************************/
 /*                           GMLFeatureClass                            */
 /************************************************************************/
+
 class CPL_DLL GMLFeatureClass
 {
     char *m_pszName;
@@ -238,8 +278,8 @@ class CPL_DLL GMLFeatureClass
     int n_nElementNameLen;
     int m_nPropertyCount;
     GMLPropertyDefn **m_papoProperty;
-    std::map<CPLString, int> m_oMapPropertyNameToIndex;
-    std::map<CPLString, int> m_oMapPropertySrcElementToIndex;
+    std::map<CPLString, int> m_oMapPropertyNameToIndex{};
+    std::map<CPLString, int> m_oMapPropertySrcElementToIndex{};
 
     int m_nGeometryPropertyCount;
     GMLGeometryPropertyDefn **m_papoGeometryProperty;
@@ -259,6 +299,11 @@ class CPL_DLL GMLFeatureClass
     char *m_pszSRSName;
     bool m_bSRSNameConsistent;
 
+    bool m_bIsConsistentSingleGeomElemPath = true;
+    std::string m_osSingleGeomElemPath{};
+
+    CPL_DISALLOW_COPY_ASSIGN(GMLFeatureClass)
+
   public:
     explicit GMLFeatureClass(const char *pszName = "");
     ~GMLFeatureClass();
@@ -271,17 +316,22 @@ class CPL_DLL GMLFeatureClass
     {
         return m_pszName;
     }
+
     void SetName(const char *pszNewName);
+
     int GetPropertyCount() const
     {
         return m_nPropertyCount;
     }
+
     GMLPropertyDefn *GetProperty(int iIndex) const;
     int GetPropertyIndex(const char *pszName) const;
+
     GMLPropertyDefn *GetProperty(const char *pszName) const
     {
         return GetProperty(GetPropertyIndex(pszName));
     }
+
     int GetPropertyIndexBySrcElement(const char *pszElement, int nLen) const;
     void StealProperties();
 
@@ -289,6 +339,7 @@ class CPL_DLL GMLFeatureClass
     {
         return m_nGeometryPropertyCount;
     }
+
     GMLGeometryPropertyDefn *GetGeometryProperty(int iIndex) const;
     int GetGeometryPropertyIndexBySrcElement(const char *pszElement) const;
     void StealGeometryProperties();
@@ -299,10 +350,31 @@ class CPL_DLL GMLFeatureClass
     int AddGeometryProperty(GMLGeometryPropertyDefn *);
     void ClearGeometryProperties();
 
+    void SetConsistentSingleGeomElemPath(bool b)
+    {
+        m_bIsConsistentSingleGeomElemPath = b;
+    }
+
+    bool IsConsistentSingleGeomElemPath() const
+    {
+        return m_bIsConsistentSingleGeomElemPath;
+    }
+
+    void SetSingleGeomElemPath(const std::string &s)
+    {
+        m_osSingleGeomElemPath = s;
+    }
+
+    const std::string &GetSingleGeomElemPath() const
+    {
+        return m_osSingleGeomElemPath;
+    }
+
     bool IsSchemaLocked() const
     {
         return m_bSchemaLocked;
     }
+
     void SetSchemaLocked(bool bLock)
     {
         m_bSchemaLocked = bLock;
@@ -318,12 +390,14 @@ class CPL_DLL GMLFeatureClass
     {
         return m_bHaveExtents;
     }
+
     void SetExtents(double dfXMin, double dfXMax, double dFYMin, double dfYMax);
     bool GetExtents(double *pdfXMin, double *pdfXMax, double *pdFYMin,
                     double *pdfYMax);
 
     void SetSRSName(const char *pszSRSName);
     void MergeSRSName(const char *pszSRSName);
+
     const char *GetSRSName()
     {
         return m_pszSRSName;
@@ -350,10 +424,9 @@ class CPL_DLL GMLFeature
                                      m_nGeometryCount <= 1 */
     CPLXMLNode *m_apsGeometry[2]; /* NULL-terminated */
 
-    // string list of named non-schema properties - used by NAS driver.
-    char **m_papszOBProperties;
-
     CPLXMLNode *m_psBoundedByGeometry = nullptr;
+
+    CPL_DISALLOW_COPY_ASSIGN(GMLFeature)
 
   public:
     explicit GMLFeature(GMLFeatureClass *);
@@ -367,17 +440,21 @@ class CPL_DLL GMLFeature
     void SetGeometryDirectly(CPLXMLNode *psGeom);
     void SetGeometryDirectly(int nIdx, CPLXMLNode *psGeom);
     void AddGeometry(CPLXMLNode *psGeom);
+
     int GetGeometryCount() const
     {
         return m_nGeometryCount;
     }
+
     const CPLXMLNode *const *GetGeometryList() const
     {
         return m_papsGeometry;
     }
+
     const CPLXMLNode *GetGeometryRef(int nIdx) const;
 
     void SetBoundedByGeometry(CPLXMLNode *psGeom);
+
     const CPLXMLNode *GetBoundedByGeometry() const
     {
         return m_psBoundedByGeometry;
@@ -394,14 +471,10 @@ class CPL_DLL GMLFeature
     {
         return m_pszFID;
     }
+
     void SetFID(const char *pszFID);
 
     void Dump(FILE *fp);
-
-    // Out of Band property handling - special stuff like relations for NAS.
-    void AddOBProperty(const char *pszName, const char *pszValue);
-    const char *GetOBProperty(const char *pszName);
-    char **GetOBProperties();
 };
 
 /************************************************************************/
@@ -416,9 +489,11 @@ class CPL_DLL IGMLReader
     virtual void SetClassListLocked(bool bFlag) = 0;
 
     virtual void SetSourceFile(const char *pszFilename) = 0;
+
     virtual void SetFP(CPL_UNUSED VSILFILE *fp)
     {
     }
+
     virtual const char *GetSourceFileName() = 0;
 
     virtual int GetClassCount() const = 0;
@@ -450,6 +525,7 @@ class CPL_DLL IGMLReader
     virtual void SetGlobalSRSName(CPL_UNUSED const char *pszGlobalSRSName)
     {
     }
+
     virtual const char *GetGlobalSRSName() = 0;
     virtual bool CanUseGlobalSRSName() = 0;
 

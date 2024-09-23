@@ -38,10 +38,8 @@ from osgeo import gdal
 # Test a fairly default case.
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_1():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     drv = gdal.GetDriverByName("GTiff")
     src_ds = gdal.Open("data/sieve_src.grd")
@@ -70,10 +68,8 @@ def test_sieve_1():
 # Try eight connected.
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_2():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     drv = gdal.GetDriverByName("GTiff")
     src_ds = gdal.Open("data/sieve_src.grd")
@@ -102,10 +98,8 @@ def test_sieve_2():
 # Do a sieve resulting in unmergable polygons.
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_3():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     drv = gdal.GetDriverByName("GTiff")
     src_ds = gdal.Open("data/unmergable.grd")
@@ -135,10 +129,8 @@ def test_sieve_3():
 # Try the bug 2634 simplified data.
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_4():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     drv = gdal.GetDriverByName("GTiff")
     src_ds = gdal.Open("data/sieve_2634.grd")
@@ -168,10 +160,8 @@ def test_sieve_4():
 # This should yield the same result as we use an opaque band
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_5():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     drv = gdal.GetDriverByName("GTiff")
     src_ds = gdal.Open("data/sieve_src.grd")
@@ -203,10 +193,7 @@ def test_sieve_5():
 
 def test_sieve_6():
 
-    try:
-        import numpy
-    except ImportError:
-        pytest.skip()
+    numpy = pytest.importorskip("numpy")
 
     # Try 3002. Should run in less than 10 seconds
     # size = 3002
@@ -238,10 +225,8 @@ def test_sieve_6():
 # Test with nodata
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_7():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     gdal.FileFromMemBuffer(
         "/vsimem/sieve_7.asc",
@@ -299,10 +284,8 @@ NODATA_value 0
 # Test propagation in our search of biggest neighbour
 
 
+@pytest.mark.require_driver("AAIGRID")
 def test_sieve_8():
-
-    if gdal.GetDriverByName("AAIGRID") is None:
-        pytest.skip("AAIGRID driver missing")
 
     gdal.FileFromMemBuffer(
         "/vsimem/sieve_8.asc",
@@ -345,3 +328,31 @@ cellsize     60.000000000000
     if cs != cs_expected:
         print("Got: ", cs)
         pytest.fail("got wrong checksum")
+
+
+###############################################################################
+# Test source bands with all masked pixels
+
+
+def test_sieve_all_masked():
+
+    drv = gdal.GetDriverByName("MEM")
+    src_ds = drv.Create("", 10, 10, gdal.GDT_Byte)
+    src_band = src_ds.GetRasterBand(1)
+    src_band.Fill(1)
+
+    mask_ds = drv.Create("", 10, 10, gdal.GDT_Byte)
+    mask_band = mask_ds.GetRasterBand(1)
+
+    dst_ds = drv.Create("", 10, 10, gdal.GDT_Byte)
+    dst_band = dst_ds.GetRasterBand(1)
+
+    expected_cs = src_band.Checksum()
+
+    gdal.SieveFilter(src_band, mask_band, dst_band, 4, 4)
+
+    assert dst_band.Checksum() == expected_cs
+
+    gdal.SieveFilter(src_band, mask_band, src_band, 4, 4)
+
+    assert src_band.Checksum() == expected_cs

@@ -33,6 +33,7 @@
 #include "ogr_selafin.h"
 #include "cpl_error.h"
 #include "cpl_quad_tree.h"
+#include "cpl_vsi_virtual.h"
 
 /************************************************************************/
 /*                           Utilities functions                        */
@@ -43,9 +44,9 @@ static void MoveOverwrite(VSILFILE *fpDest, VSILFILE *fpSource)
     VSIRewindL(fpDest);
     VSIFTruncateL(fpDest, 0);
     char anBuf[0x10000];
-    while (!VSIFEofL(fpSource))
+    while (!fpSource->Eof() && !fpSource->Error())
     {
-        size_t nSize = VSIFReadL(anBuf, 1, 0x10000, fpSource);
+        size_t nSize = VSIFReadL(anBuf, 1, sizeof(anBuf), fpSource);
         size_t nLeft = nSize;
         while (nLeft > 0)
             nLeft -= VSIFWriteL(anBuf + nSize - nLeft, 1, nLeft, fpDest);
@@ -59,12 +60,13 @@ static void MoveOverwrite(VSILFILE *fpDest, VSILFILE *fpSource)
 /*       Note that no operation on OGRSelafinLayer is thread-safe       */
 /************************************************************************/
 
-OGRSelafinLayer::OGRSelafinLayer(const char *pszLayerNameP, int bUpdateP,
-                                 OGRSpatialReference *poSpatialRefP,
+OGRSelafinLayer::OGRSelafinLayer(GDALDataset *poDS, const char *pszLayerNameP,
+                                 int bUpdateP,
+                                 const OGRSpatialReference *poSpatialRefP,
                                  Selafin::Header *poHeaderP, int nStepNumberP,
                                  SelafinTypeDef eTypeP)
-    : eType(eTypeP), bUpdate(CPL_TO_BOOL(bUpdateP)), nStepNumber(nStepNumberP),
-      poHeader(poHeaderP),
+    : m_poDS(poDS), eType(eTypeP), bUpdate(CPL_TO_BOOL(bUpdateP)),
+      nStepNumber(nStepNumberP), poHeader(poHeaderP),
       poFeatureDefn(new OGRFeatureDefn(CPLGetBasename(pszLayerNameP))),
       poSpatialRef(nullptr), nCurrentId(-1)
 {
@@ -531,11 +533,18 @@ OGRErr OGRSelafinLayer::ICreateFeature(OGRFeature *poFeature)
             poHeader->nPointsPerElement = nNum - 1;
             if (poHeader->nElements > 0)
             {
-                poHeader->panConnectivity = (int *)CPLRealloc(
-                    poHeader->panConnectivity,
-                    poHeader->nElements * poHeader->nPointsPerElement);
-                if (poHeader->panConnectivity == nullptr)
+                int *panConnectivity =
+                    reinterpret_cast<int *>(VSI_REALLOC_VERBOSE(
+                        poHeader->panConnectivity,
+                        static_cast<size_t>(poHeader->nElements) *
+                            poHeader->nPointsPerElement));
+                if (panConnectivity == nullptr)
+                {
+                    VSIFree(poHeader->panConnectivity);
+                    poHeader->panConnectivity = nullptr;
                     return OGRERR_FAILURE;
+                }
+                poHeader->panConnectivity = panConnectivity;
             }
         }
         else
@@ -679,7 +688,7 @@ OGRErr OGRSelafinLayer::ICreateFeature(OGRFeature *poFeature)
 /************************************************************************/
 /*                           CreateField()                              */
 /************************************************************************/
-OGRErr OGRSelafinLayer::CreateField(OGRFieldDefn *poField,
+OGRErr OGRSelafinLayer::CreateField(const OGRFieldDefn *poField,
                                     CPL_UNUSED int bApproxOK)
 {
     CPLDebug("Selafin", "CreateField(%s,%s)", poField->GetNameRef(),

@@ -154,12 +154,12 @@ void netCDFVID::nc_resize_vdim(int dimid, size_t dimlen)
 
 void netCDFVID::nc_set_define_mode()
 {
-    nc_redef(ncid);
+    m_poDS->SetDefineMode(true);
 }
 
 void netCDFVID::nc_set_data_mode()
 {
-    nc_enddef(ncid);
+    m_poDS->SetDefineMode(false);
 }
 
 void netCDFVID::nc_vmap()
@@ -168,7 +168,7 @@ void netCDFVID::nc_vmap()
 
     for (size_t itr_d = 0; itr_d < dimList.size(); itr_d++)
     {
-        int realDimID;
+        int realDimID = -1;
         netCDFVDimension &dim = dimList[itr_d];
 
         if (!dim.isValid())
@@ -176,18 +176,19 @@ void netCDFVID::nc_vmap()
             continue;  // don't do anywork if variable is invalid
         }
 
-        nc_def_dim(ncid, dim.getName().c_str(), dim.getLen(), &realDimID);
+        NCDF_ERR(
+            nc_def_dim(ncid, dim.getName().c_str(), dim.getLen(), &realDimID));
         dimList[itr_d].setRealID(realDimID);
     }
 
     for (size_t itr_v = 0; itr_v < varList.size(); itr_v++)
     {
-        int realVarID;
+        int realVarID = -1;
         netCDFVVariable &var = varList[itr_v];
 
         if (!var.isValid())
         {
-            continue;  // don't do anywork if variable is invalid
+            continue;  // don't do any work if variable is invalid
         }
 
         // Convert each virtual dimID to a physical dimID:
@@ -199,8 +200,8 @@ void netCDFVID::nc_vmap()
                 virtualDIDToDim(var.getDimIds()[dimct]).getRealID();
         }
 
-        nc_def_var(ncid, var.getName().c_str(), var.getType(),
-                   var.getDimCount(), newdims.get(), &realVarID);
+        NCDF_ERR(nc_def_var(ncid, var.getName().c_str(), var.getType(),
+                            var.getDimCount(), newdims.get(), &realVarID));
         var.setRealID(realVarID);
 
         // Now write each of its attributes
@@ -238,7 +239,7 @@ netCDFVDimension &netCDFVID::virtualDIDToDim(int virtualID)
     return dimList[virtualID];
 }
 
-int netCDFVID::nameToVirtualVID(std::string &name)
+int netCDFVID::nameToVirtualVID(const std::string &name)
 {
     if (nameVarTable.count(name) < 1)
     {
@@ -248,7 +249,7 @@ int netCDFVID::nameToVirtualVID(std::string &name)
     return nameVarTable.at(name);
 }
 
-int netCDFVID::nameToVirtualDID(std::string &name)
+int netCDFVID::nameToVirtualDID(const std::string &name)
 {
     if (nameDimTable.count(name) < 1)
     {
@@ -388,7 +389,6 @@ void netCDFVID::nc_put_vvara_text(int varid, const size_t *start,
     }
 }
 
-#ifdef NETCDF_HAS_NC4
 void netCDFVID::nc_put_vvar1_string(int varid, const size_t *index,
                                     const char **value)
 {
@@ -402,6 +402,5 @@ void netCDFVID::nc_put_vvar1_string(int varid, const size_t *index,
         throw SG_Exception_VWrite_Failure("variable", "datum");
     }
 }
-#endif
 
 }  // namespace nccfdriver

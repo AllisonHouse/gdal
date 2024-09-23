@@ -29,25 +29,24 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+import gdaltest
 import ogrtest
 import pytest
 
-from osgeo import ogr
+from osgeo import gdal, ogr
 
 ###############################################################################
 # Test TopoJSON
 
 
-def test_ogr_toposjon_objects_is_array():
+def test_ogr_topojson_objects_is_array():
 
     ds = ogr.Open("data/topojson/topojson1.topojson")
     lyr = ds.GetLayer(0)
     assert lyr.GetName() == "a_layer"
     feat = lyr.GetNextFeature()
-    assert (
-        ogrtest.check_feature_geometry(feat, "LINESTRING (100 1000,110 1000,110 1100)")
-        == 0
-    )
+    ogrtest.check_feature_geometry(feat, "LINESTRING (100 1000,110 1000,110 1100)")
+
     lyr = ds.GetLayer(1)
     assert lyr.GetName() == "TopoJSON"
     assert lyr.GetLayerDefn().GetFieldCount() == 2
@@ -125,7 +124,7 @@ def test_ogr_toposjon_objects_is_array():
     ds = None
 
 
-def test_ogr_toposjon_objects_is_dict():
+def test_ogr_topojson_objects_is_dict():
 
     ds = ogr.Open("data/topojson/topojson2.topojson")
     lyr = ds.GetLayer(0)
@@ -136,33 +135,57 @@ def test_ogr_toposjon_objects_is_dict():
     feat = lyr.GetNextFeature()
     assert feat["id"] == "foo"
     assert feat["name"] == "line"
-    assert (
-        ogrtest.check_feature_geometry(feat, "LINESTRING (100 1000,110 1000,110 1100)")
-        == 0
-    )
+    ogrtest.check_feature_geometry(feat, "LINESTRING (100 1000,110 1000,110 1100)")
+
     lyr = ds.GetLayer(1)
     assert lyr.GetName() == "TopoJSON"
     feat = lyr.GetNextFeature()
-    assert (
-        ogrtest.check_feature_geometry(feat, "LINESTRING (100 1000,110 1000,110 1100)")
-        == 0
-    )
+    ogrtest.check_feature_geometry(feat, "LINESTRING (100 1000,110 1000,110 1100)")
+
     ds = None
 
 
-def test_ogr_toposjon_no_transform():
+def test_ogr_topojson_no_transform():
 
     ds = ogr.Open("data/topojson/topojson3.topojson")
     lyr = ds.GetLayer(0)
     assert lyr.GetName() == "a_layer"
     feat = lyr.GetNextFeature()
-    assert (
-        ogrtest.check_feature_geometry(feat, "LINESTRING (0 0,10 0,0 10,10 0,0 0)") == 0
-    )
+    ogrtest.check_feature_geometry(feat, "LINESTRING (0 0,10 0,0 10,10 0,0 0)")
+
     lyr = ds.GetLayer(1)
     assert lyr.GetName() == "TopoJSON"
     feat = lyr.GetNextFeature()
-    assert (
-        ogrtest.check_feature_geometry(feat, "LINESTRING (0 0,10 0,0 10,10 0,0 0)") == 0
-    )
+    ogrtest.check_feature_geometry(feat, "LINESTRING (0 0,10 0,0 10,10 0,0 0)")
     ds = None
+
+
+###############################################################################
+# Test force opening a TopoJSON file
+
+
+def test_ogr_topojson_force_opening(tmp_vsimem):
+
+    filename = str(tmp_vsimem / "test.json")
+
+    with open("data/topojson/topojson1.topojson", "rb") as fsrc:
+        with gdaltest.vsi_open(filename, "wb") as fdest:
+            fdest.write(fsrc.read(1))
+            fdest.write(b" " * (1000 * 1000))
+            fdest.write(fsrc.read())
+
+    with pytest.raises(Exception):
+        gdal.OpenEx(filename)
+
+    ds = gdal.OpenEx(filename, allowed_drivers=["TopoJSON"])
+    assert ds.GetDriver().GetDescription() == "TopoJSON"
+
+
+###############################################################################
+# Test force opening a URL as TopoJSON
+
+
+def test_ogr_topojson_force_opening_url():
+
+    drv = gdal.IdentifyDriverEx("http://example.com", allowed_drivers=["TopoJSON"])
+    assert drv.GetDescription() == "TopoJSON"

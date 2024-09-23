@@ -41,7 +41,7 @@ from osgeo import gdal
 def test_vrtfilt_1():
 
     tst = gdaltest.GDALTest("VRT", "vrt/avfilt.vrt", 1, 21890)
-    return tst.testOpen()
+    tst.testOpen()
 
 
 ###############################################################################
@@ -57,7 +57,7 @@ def test_vrtfilt_2():
     # This is a black&white checkboard, where black = nodata
     # Thus averaging it and taking nodata into account will not change it
     tst = gdaltest.GDALTest("VRT", "vrt/avfilt_nodata.vrt", 1, checksum)
-    return tst.testOpen()
+    tst.testOpen()
 
 
 ###############################################################################
@@ -154,7 +154,7 @@ def test_vrtfilt_5():
 def test_vrtfilt_6():
 
     tst = gdaltest.GDALTest("VRT", "vrt/avfilt_1d.vrt", 1, 22377)
-    return tst.testOpen()
+    tst.testOpen()
 
 
 ###############################################################################
@@ -219,8 +219,8 @@ def test_vrtfilt_invalid_kernel_size():
     md = {}
     md["source_0"] = filterSourceXML
 
-    with gdaltest.error_handler():
-        assert vrt_ds.GetRasterBand(1).SetMetadata(md, "vrt_sources") != gdal.CE_None
+    with pytest.raises(Exception):
+        vrt_ds.GetRasterBand(1).SetMetadata(md, "vrt_sources")
 
     filterSourceXML = """ <KernelFilteredSource>
       <SourceFilename>data/rgbsmall.tif</SourceFilename>
@@ -236,13 +236,29 @@ def test_vrtfilt_invalid_kernel_size():
     md = {}
     md["source_0"] = filterSourceXML
 
-    with gdaltest.error_handler():
-        assert vrt_ds.GetRasterBand(1).SetMetadata(md, "vrt_sources") != gdal.CE_None
+    with pytest.raises(Exception):
+        vrt_ds.GetRasterBand(1).SetMetadata(md, "vrt_sources")
 
 
 ###############################################################################
-# Cleanup.
 
 
-def test_vrtfilt_cleanup():
-    pass
+def test_vrtfilt_serialize_separatable_kernel():
+
+    vrt_ds = gdal.GetDriverByName("VRT").Create("", 1, 1, 1)
+
+    filterSourceXML = """<KernelFilteredSource>
+      <SourceFilename relativeToVRT="0">data/rgbsmall.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <Kernel normalized="0">
+        <Size>3</Size>
+        <Coefs>1 1 1</Coefs>
+      </Kernel>
+    </KernelFilteredSource>"""
+
+    md = {}
+    md["source_0"] = filterSourceXML
+
+    vrt_ds.GetRasterBand(1).SetMetadata(md, "vrt_sources")
+
+    assert filterSourceXML in vrt_ds.GetMetadata("xml:VRT")[0]

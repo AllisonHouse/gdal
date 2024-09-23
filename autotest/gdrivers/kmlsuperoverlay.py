@@ -39,6 +39,21 @@ from osgeo import gdal
 
 pytestmark = pytest.mark.require_driver("KMLSUPEROVERLAY")
 
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_and_cleanup():
+
+    yield
+
+    with gdaltest.disable_exceptions():
+        gdal.Unlink("/vsimem/0/0/0.png")
+        gdal.Unlink("/vsimem/0/0/0.kml")
+        gdal.Unlink("/vsimem/0/0")
+        gdal.Unlink("/vsimem/0")
+        gdal.Unlink("/vsimem/kmlout.kml")
+        gdal.Unlink("/vsimem/kmlout.kmz")
+
+
 ###############################################################################
 # Test CreateCopy() to a KMZ file
 
@@ -49,7 +64,7 @@ def test_kmlsuperoverlay_1():
         "KMLSUPEROVERLAY", "small_world.tif", 1, 30111, options=["FORMAT=PNG"]
     )
 
-    return tst.testCreateCopy(new_filename="/vsimem/kmlout.kmz")
+    tst.testCreateCopy(new_filename="/vsimem/kmlout.kmz")
 
 
 ###############################################################################
@@ -62,7 +77,7 @@ def test_kmlsuperoverlay_2():
         "KMLSUPEROVERLAY", "small_world.tif", 1, 30111, options=["FORMAT=PNG"]
     )
 
-    return tst.testCreateCopy(new_filename="/vsimem/kmlout.kml")
+    tst.testCreateCopy(new_filename="/vsimem/kmlout.kml")
 
 
 ###############################################################################
@@ -365,6 +380,20 @@ def test_kmlsuperoverlay_single_overlay_document_pct():
 
 
 ###############################################################################
+# Test raster KML with gx:LatLonQuad
+
+
+def test_kmlsuperoverlay_gx_latlonquad():
+
+    ds = gdal.Open("data/kml/small_world_latlonquad.kml")
+    assert ds.GetProjectionRef().find("WGS_1984") >= 0
+    got_gt = ds.GetGeoTransform()
+    ref_gt = [-180.0, 0.9, 0.0, 90.0, 0.0, -0.9]
+    for i in range(6):
+        assert got_gt[i] == pytest.approx(ref_gt[i], abs=1e-6)
+
+
+###############################################################################
 # Test that a raster with lots of blank space doesn't have unnecessary child
 # KML/PNG files in transparent areas
 
@@ -484,17 +513,3 @@ def test_kmlsuperoverlay_8():
     shutil.rmtree("tmp/2")
     shutil.rmtree("tmp/3")
     os.remove("tmp/tmp.kml")
-
-
-###############################################################################
-# Cleanup
-
-
-def test_kmlsuperoverlay_cleanup():
-
-    gdal.Unlink("/vsimem/0/0/0.png")
-    gdal.Unlink("/vsimem/0/0/0.kml")
-    gdal.Unlink("/vsimem/0/0")
-    gdal.Unlink("/vsimem/0")
-    gdal.Unlink("/vsimem/kmlout.kml")
-    gdal.Unlink("/vsimem/kmlout.kmz")

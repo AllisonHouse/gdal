@@ -56,6 +56,8 @@ class OGRCSWLayer final : public OGRLayer
     CPLString osQuery;
     CPLString osCSWWhere;
 
+    std::string m_osTmpDir{};
+
     GDALDataset *FetchGetRecords();
     GIntBig GetFeatureCountWithHits();
     void BuildQuery();
@@ -79,10 +81,12 @@ class OGRCSWLayer final : public OGRLayer
     }
 
     virtual void SetSpatialFilter(OGRGeometry *) override;
+
     virtual void SetSpatialFilter(int iGeomField, OGRGeometry *poGeom) override
     {
         OGRLayer::SetSpatialFilter(iGeomField, poGeom);
     }
+
     virtual OGRErr SetAttributeFilter(const char *) override;
 };
 
@@ -119,6 +123,7 @@ class OGRCSWDataSource final : public OGRDataSource
     {
         return poLayer != nullptr;
     }
+
     virtual OGRLayer *GetLayer(int) override;
 
     virtual int TestCapability(const char *) override
@@ -132,22 +137,27 @@ class OGRCSWDataSource final : public OGRDataSource
     {
         return osBaseURL;
     }
+
     const CPLString &GetVersion()
     {
         return osVersion;
     }
+
     const CPLString &GetElementSetName()
     {
         return osElementSetName;
     }
+
     const CPLString &GetOutputSchema()
     {
         return osOutputSchema;
     }
+
     bool FullExtentRecordsAsNonSpatial()
     {
         return bFullExtentRecordsAsNonSpatial;
     }
+
     int GetMaxRecords()
     {
         return nMaxRecords;
@@ -250,6 +260,8 @@ OGRCSWLayer::OGRCSWLayer(OGRCSWDataSource *poDSIn)
     }
 
     poSRS->Release();
+
+    m_osTmpDir = VSIMemGenerateHiddenFilename("csw");
 }
 
 /************************************************************************/
@@ -260,8 +272,7 @@ OGRCSWLayer::~OGRCSWLayer()
 {
     poFeatureDefn->Release();
     GDALClose(poBaseDS);
-    CPLString osTmpDirName = CPLSPrintf("/vsimem/tempcsw_%p", this);
-    OGRWFSRecursiveUnlink(osTmpDirName);
+    VSIRmdirRecursive(m_osTmpDir.c_str());
 }
 
 /************************************************************************/
@@ -523,8 +534,7 @@ GDALDataset *OGRCSWLayer::FetchGetRecords()
         return nullptr;
     }
 
-    CPLString osTmpDirName = CPLSPrintf("/vsimem/tempcsw_%p", this);
-    VSIMkdir(osTmpDirName, 0);
+    VSIMkdir(m_osTmpDir.c_str(), 0);
 
     GByte *pabyData = psResult->pabyData;
     int nDataLen = psResult->nDataLen;
@@ -541,10 +551,10 @@ GDALDataset *OGRCSWLayer::FetchGetRecords()
 
     CPLString osTmpFileName;
 
-    osTmpFileName = osTmpDirName + "/file.gfs";
+    osTmpFileName = m_osTmpDir + "/file.gfs";
     VSIUnlink(osTmpFileName);
 
-    osTmpFileName = osTmpDirName + "/file.gml";
+    osTmpFileName = m_osTmpDir + "/file.gml";
 
     VSILFILE *fp =
         VSIFileFromMemBuffer(osTmpFileName, pabyData, nDataLen, TRUE);

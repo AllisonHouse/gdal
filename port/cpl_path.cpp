@@ -53,12 +53,6 @@
 constexpr int CPL_PATH_BUF_SIZE = 2048;
 constexpr int CPL_PATH_BUF_COUNT = 10;
 
-#if defined(WIN32)
-constexpr char SEP_STRING[] = "\\";
-#else
-constexpr char SEP_STRING[] = "/";
-#endif
-
 static const char *CPLStaticBufferTooSmall(char *pszStaticResult)
 {
     CPLError(CE_Failure, CPLE_AppDefined, "Destination buffer too small");
@@ -107,10 +101,10 @@ static char *CPLGetStaticResult()
 /*                        CPLFindFilenameStart()                        */
 /************************************************************************/
 
-static int CPLFindFilenameStart(const char *pszFilename)
+static int CPLFindFilenameStart(const char *pszFilename, size_t nStart = 0)
 
 {
-    size_t iFileStart = strlen(pszFilename);
+    size_t iFileStart = nStart ? nStart : strlen(pszFilename);
 
     for (; iFileStart > 0 && pszFilename[iFileStart - 1] != '/' &&
            pszFilename[iFileStart - 1] != '\\';
@@ -150,7 +144,15 @@ static int CPLFindFilenameStart(const char *pszFilename)
 const char *CPLGetPath(const char *pszFilename)
 
 {
-    const int iFileStart = CPLFindFilenameStart(pszFilename);
+    size_t nSuffixPos = 0;
+    if (STARTS_WITH(pszFilename, "/vsicurl/http"))
+    {
+        const char *pszQuestionMark = strchr(pszFilename, '?');
+        if (pszQuestionMark)
+            nSuffixPos = static_cast<size_t>(pszQuestionMark - pszFilename);
+    }
+
+    const int iFileStart = CPLFindFilenameStart(pszFilename, nSuffixPos);
     char *pszStaticResult = CPLGetStaticResult();
 
     if (pszStaticResult == nullptr || iFileStart >= CPL_PATH_BUF_SIZE)
@@ -171,6 +173,13 @@ const char *CPLGetPath(const char *pszFilename)
     if (iFileStart > 1 && (pszStaticResult[iFileStart - 1] == '/' ||
                            pszStaticResult[iFileStart - 1] == '\\'))
         pszStaticResult[iFileStart - 1] = '\0';
+
+    if (nSuffixPos)
+    {
+        if (CPLStrlcat(pszStaticResult, pszFilename + nSuffixPos,
+                       CPL_PATH_BUF_SIZE) >= CPL_PATH_BUF_SIZE)
+            return CPLStaticBufferTooSmall(pszStaticResult);
+    }
 
     return pszStaticResult;
 }
@@ -204,7 +213,15 @@ const char *CPLGetPath(const char *pszFilename)
 const char *CPLGetDirname(const char *pszFilename)
 
 {
-    const int iFileStart = CPLFindFilenameStart(pszFilename);
+    size_t nSuffixPos = 0;
+    if (STARTS_WITH(pszFilename, "/vsicurl/http"))
+    {
+        const char *pszQuestionMark = strchr(pszFilename, '?');
+        if (pszQuestionMark)
+            nSuffixPos = static_cast<size_t>(pszQuestionMark - pszFilename);
+    }
+
+    const int iFileStart = CPLFindFilenameStart(pszFilename, nSuffixPos);
     char *pszStaticResult = CPLGetStaticResult();
 
     if (pszStaticResult == nullptr || iFileStart >= CPL_PATH_BUF_SIZE)
@@ -225,6 +242,13 @@ const char *CPLGetDirname(const char *pszFilename)
     if (iFileStart > 1 && (pszStaticResult[iFileStart - 1] == '/' ||
                            pszStaticResult[iFileStart - 1] == '\\'))
         pszStaticResult[iFileStart - 1] = '\0';
+
+    if (nSuffixPos)
+    {
+        if (CPLStrlcat(pszStaticResult, pszFilename + nSuffixPos,
+                       CPL_PATH_BUF_SIZE) >= CPL_PATH_BUF_SIZE)
+            return CPLStaticBufferTooSmall(pszStaticResult);
+    }
 
     return pszStaticResult;
 }
@@ -487,33 +511,6 @@ const char *CPLResetExtension(const char *pszPath, const char *pszExt)
 }
 
 /************************************************************************/
-/*                       RequiresUnixPathSeparator()                    */
-/************************************************************************/
-
-#if defined(WIN32)
-static bool RequiresUnixPathSeparator(const char *pszPath)
-{
-    return strcmp(pszPath, "/vsimem") == 0 || STARTS_WITH(pszPath, "http://") ||
-           STARTS_WITH(pszPath, "https://") ||
-           STARTS_WITH(pszPath, "/vsimem/") ||
-           STARTS_WITH(pszPath, "/vsicurl/") ||
-           STARTS_WITH(pszPath, "/vsicurl_streaming/") ||
-           STARTS_WITH(pszPath, "/vsis3/") ||
-           STARTS_WITH(pszPath, "/vsis3_streaming/") ||
-           STARTS_WITH(pszPath, "/vsigs/") ||
-           STARTS_WITH(pszPath, "/vsigs_streaming/") ||
-           STARTS_WITH(pszPath, "/vsiaz/") ||
-           STARTS_WITH(pszPath, "/vsiaz_streaming/") ||
-           STARTS_WITH(pszPath, "/vsiadls/") ||
-           STARTS_WITH(pszPath, "/vsioss/") ||
-           STARTS_WITH(pszPath, "/vsioss_streaming/") ||
-           STARTS_WITH(pszPath, "/vsiswift/") ||
-           STARTS_WITH(pszPath, "/vsiswift_streaming/") ||
-           STARTS_WITH(pszPath, "/vsizip/") || STARTS_WITH(pszPath, "/vsi7z/");
-}
-#endif
-
-/************************************************************************/
 /*                          CPLFormFilename()                           */
 /************************************************************************/
 
@@ -568,6 +565,19 @@ const char *CPLFormFilename(const char *pszPath, const char *pszBasename,
     if (pszPath == nullptr)
         pszPath = "";
     size_t nLenPath = strlen(pszPath);
+
+    size_t nSuffixPos = 0;
+    if (STARTS_WITH_CI(pszPath, "/vsicurl/http"))
+    {
+        const char *pszQuestionMark = strchr(pszPath, '?');
+        if (pszQuestionMark)
+        {
+            nSuffixPos = static_cast<size_t>(pszQuestionMark - pszPath);
+            nLenPath = nSuffixPos;
+        }
+        pszAddedPathSep = "/";
+    }
+
     if (!CPLIsFilenameRelative(pszPath) && strcmp(pszBasename, "..") == 0)
     {
         // /a/b + .. --> /a
@@ -593,22 +603,15 @@ const char *CPLFormFilename(const char *pszPath, const char *pszBasename,
         else
         {
             nLenPath = nLenPathOri;
-            pszAddedPathSep = SEP_STRING;
+            if (pszAddedPathSep[0] == 0)
+                pszAddedPathSep = VSIGetDirectorySeparator(pszPath);
         }
     }
     else if (nLenPath > 0 && pszPath[nLenPath - 1] != '/' &&
              pszPath[nLenPath - 1] != '\\')
     {
-#if defined(WIN32)
-        // FIXME? Would be better to ask the filesystems what it
-        // prefers as directory separator?
-        if (RequiresUnixPathSeparator(pszPath))
-            pszAddedPathSep = "/";
-        else
-#endif
-        {
-            pszAddedPathSep = SEP_STRING;
-        }
+        if (pszAddedPathSep[0] == 0)
+            pszAddedPathSep = VSIGetDirectorySeparator(pszPath);
     }
 
     if (pszExtension == nullptr)
@@ -616,17 +619,26 @@ const char *CPLFormFilename(const char *pszPath, const char *pszBasename,
     else if (pszExtension[0] != '.' && strlen(pszExtension) > 0)
         pszAddedExtSep = ".";
 
-    if (CPLStrlcpy(
-            pszStaticResult, pszPath,
-            std::min(nLenPath + 1, static_cast<size_t>(CPL_PATH_BUF_SIZE))) >=
-            static_cast<size_t>(CPL_PATH_BUF_SIZE) ||
-        CPLStrlcat(pszStaticResult, pszAddedPathSep, CPL_PATH_BUF_SIZE) >=
+    if (nLenPath >= static_cast<size_t>(CPL_PATH_BUF_SIZE))
+        return CPLStaticBufferTooSmall(pszStaticResult);
+
+    memcpy(pszStaticResult, pszPath, nLenPath);
+    pszStaticResult[nLenPath] = 0;
+
+    if (CPLStrlcat(pszStaticResult, pszAddedPathSep, CPL_PATH_BUF_SIZE) >=
             static_cast<size_t>(CPL_PATH_BUF_SIZE) ||
         CPLStrlcat(pszStaticResult, pszBasename, CPL_PATH_BUF_SIZE) >=
             static_cast<size_t>(CPL_PATH_BUF_SIZE) ||
         CPLStrlcat(pszStaticResult, pszAddedExtSep, CPL_PATH_BUF_SIZE) >=
             static_cast<size_t>(CPL_PATH_BUF_SIZE) ||
         CPLStrlcat(pszStaticResult, pszExtension, CPL_PATH_BUF_SIZE) >=
+            static_cast<size_t>(CPL_PATH_BUF_SIZE))
+    {
+        return CPLStaticBufferTooSmall(pszStaticResult);
+    }
+
+    if (nSuffixPos &&
+        CPLStrlcat(pszStaticResult, pszPath + nSuffixPos, CPL_PATH_BUF_SIZE) >=
             static_cast<size_t>(CPL_PATH_BUF_SIZE))
     {
         return CPLStaticBufferTooSmall(pszStaticResult);
@@ -696,8 +708,7 @@ const char *CPLFormCIFilename(const char *pszPath, const char *pszBasename,
     {
         for (size_t i = 0; pszFilename[i] != '\0'; i++)
         {
-            if (islower(pszFilename[i]))
-                pszFilename[i] = static_cast<char>(toupper(pszFilename[i]));
+            pszFilename[i] = static_cast<char>(CPLToupper(pszFilename[i]));
         }
 
         pszFullPath = CPLFormFilename(pszPath, pszFilename, nullptr);
@@ -708,8 +719,8 @@ const char *CPLFormCIFilename(const char *pszPath, const char *pszBasename,
     {
         for (size_t i = 0; pszFilename[i] != '\0'; i++)
         {
-            if (isupper(pszFilename[i]))
-                pszFilename[i] = static_cast<char>(tolower(pszFilename[i]));
+            pszFilename[i] = static_cast<char>(
+                CPLTolower(static_cast<unsigned char>(pszFilename[i])));
         }
 
         pszFullPath = CPLFormFilename(pszPath, pszFilename, nullptr);
@@ -781,17 +792,7 @@ const char *CPLProjectRelativeFilename(const char *pszProjectDir,
     if (pszProjectDir[strlen(pszProjectDir) - 1] != '/' &&
         pszProjectDir[strlen(pszProjectDir) - 1] != '\\')
     {
-        // FIXME: Better to ask the filesystems what it
-        // prefers as directory separator?
-        const char *pszAddedPathSep = nullptr;
-#if defined(WIN32)
-        if (RequiresUnixPathSeparator(pszStaticResult))
-            pszAddedPathSep = "/";
-        else
-#endif
-        {
-            pszAddedPathSep = SEP_STRING;
-        }
+        const char *pszAddedPathSep = VSIGetDirectorySeparator(pszProjectDir);
         if (CPLStrlcat(pszStaticResult, pszAddedPathSep, CPL_PATH_BUF_SIZE) >=
             static_cast<size_t>(CPL_PATH_BUF_SIZE))
             return CPLStaticBufferTooSmall(pszStaticResult);
@@ -1178,7 +1179,7 @@ const char *CPLExpandTilde(const char *pszFilename)
 const char *CPLGetHomeDir()
 
 {
-#ifdef WIN32
+#ifdef _WIN32
     return CPLGetConfigOption("USERPROFILE", nullptr);
 #else
     return CPLGetConfigOption("HOME", nullptr);

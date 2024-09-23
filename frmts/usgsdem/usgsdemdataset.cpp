@@ -35,6 +35,7 @@
 #include "ogr_spatialref.h"
 
 #include <algorithm>
+#include <cmath>
 
 typedef struct
 {
@@ -67,7 +68,7 @@ static int ReadInt(VSILFILE *fp)
         }
         if (bInProlog)
         {
-            if (!isspace(static_cast<int>(c)))
+            if (!isspace(static_cast<unsigned char>(c)))
             {
                 bInProlog = false;
             }
@@ -166,7 +167,7 @@ static int USGSDEMReadIntFromBuffer(Buffer *psBuffer, int *pbSuccess = nullptr)
 
         c = psBuffer->buffer[psBuffer->cur_index];
         psBuffer->cur_index++;
-        if (!isspace(static_cast<int>(c)))
+        if (!isspace(static_cast<unsigned char>(c)))
             break;
     }
 
@@ -452,7 +453,7 @@ CPLErr USGSDEMRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff,
             dyStart = dyStart / 3600.0;
 
         double dygap = (dfYMin - dyStart) / poGDS->adfGeoTransform[5] + 0.5;
-        if (dygap <= INT_MIN || dygap >= INT_MAX || !CPLIsFinite(dygap))
+        if (dygap <= INT_MIN || dygap >= INT_MAX || !std::isfinite(dygap))
         {
             CPLFree(sBuffer.buffer);
             return CE_Failure;
@@ -793,7 +794,7 @@ int USGSDEMDataset::LoadFromFile(VSILFILE *InDem)
             sr.SetStatePlane(iUTMZone, bNAD83);
     }
 
-    m_oSRS = sr;
+    m_oSRS = std::move(sr);
 
     /* -------------------------------------------------------------------- */
     /*      For UTM we use the extents (really the UTM coordinates of       */

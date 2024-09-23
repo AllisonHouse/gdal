@@ -59,7 +59,6 @@ class JP2LuraDataset final : public GDALJP2AbstractDataset
     JP2LuraDataset();
     ~JP2LuraDataset();
 
-    static int Identify(GDALOpenInfo *poOpenInfo);
     static GDALDataset *Open(GDALOpenInfo *);
     static GDALDataset *CreateCopy(const char *pszFilename,
                                    GDALDataset *poSrcDS, int bStrict,
@@ -70,7 +69,7 @@ class JP2LuraDataset final : public GDALJP2AbstractDataset
     virtual CPLErr IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                              int nXSize, int nYSize, void *pData, int nBufXSize,
                              int nBufYSize, GDALDataType eBufType,
-                             int nBandCount, int *panBandMap,
+                             int nBandCount, BANDMAP_TYPE panBandMap,
                              GSpacing nPixelSpace, GSpacing nLineSpace,
                              GSpacing nBandSpace,
                              GDALRasterIOExtraArg *psExtraArg) override;

@@ -32,7 +32,7 @@
 
 #include "cpl_port.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 #include <windows.h>
 #endif
 
@@ -74,7 +74,7 @@ class CPL_DLL CPLODBCDriverInstaller
 
     /**
      * Installs ODBC driver or updates definition of already installed driver.
-     * Interanally, it calls ODBC's SQLInstallDriverEx function.
+     * Internally, it calls ODBC's SQLInstallDriverEx function.
      *
      * @param pszDriver - The driver definition as a list of keyword-value
      * pairs describing the driver (See ODBC API Reference).
@@ -209,6 +209,7 @@ class CPL_DLL CPLODBCSession
     int BeginTransaction();
     int CommitTransaction();
     int RollbackTransaction();
+
     /** Returns whether a transaction is active */
     int IsInTransaction()
     {
@@ -220,11 +221,13 @@ class CPL_DLL CPLODBCSession
     int CloseSession();
 
     int Failed(int, HSTMT = nullptr);
+
     /** Return connection handle */
     HDBC GetConnection()
     {
         return m_hDBC;
     }
+
     /** Return GetEnvironment handle */
     HENV GetEnvironment()
     {
@@ -320,10 +323,13 @@ class CPL_DLL CPLODBCStatement
     void Clear();
     void AppendEscaped(const char *);
     void Append(const char *);
+    void Append(const std::string &);
+    // cppcheck-suppress functionStatic
     void Append(int);
     void Append(double);
     int Appendf(CPL_FORMAT_STRING(const char *), ...)
         CPL_PRINT_FUNC_FORMAT(2, 3);
+
     /** Return statement string */
     const char *GetCommand()
     {

@@ -80,6 +80,7 @@ typedef void GDALDatasetShadow;
 typedef void GDALRasterBandShadow;
 typedef void GDALColorTableShadow;
 typedef void GDALRasterAttributeTableShadow;
+typedef void GDALSubdatasetInfoShadow;
 typedef void GDALTransformerInfoShadow;
 typedef void GDALAsyncReaderShadow;
 typedef void GDALRelationshipShadow;
@@ -109,6 +110,7 @@ typedef void OGRGeometryShadow;
 
 typedef struct OGRStyleTableHS OGRStyleTableShadow;
 typedef struct OGRFieldDomainHS OGRFieldDomainShadow;
+typedef struct OGRGeomFieldDefnHS OGRGeomFieldDefnShadow;
 %}
 #endif /* #if defined(SWIGPYTHON) || defined(SWIGJAVA) */
 
@@ -367,6 +369,7 @@ $1;
 %rename (GetDataTypeByName) GDALGetDataTypeByName;
 %rename (DataTypeUnion) GDALDataTypeUnion;
 %rename (GetColorInterpretationName) GDALGetColorInterpretationName;
+%rename (GetColorInterpretationByName) GDALGetColorInterpretationByName;
 %rename (GetPaletteInterpretationName) GDALGetPaletteInterpretationName;
 %rename (DecToDMS) GDALDecToDMS;
 %rename (PackedDMSToDec) GDALPackedDMSToDec;
@@ -374,6 +377,7 @@ $1;
 %rename (ParseXMLString) CPLParseXMLString;
 %rename (SerializeXMLTree) CPLSerializeXMLTree;
 %rename (GetJPEG2000Structure) GDALGetJPEG2000Structure;
+%rename (GetFilenameFromSubdatasetName) GDALGetFilenameFromSubdatasetName;
 
 //************************************************************************
 //
@@ -605,6 +609,13 @@ RETURN_NONE GDALGCPsToGeoTransform( int nGCPs, GDAL_GCP const * pGCPs,
 
 //************************************************************************
 //
+// Define the SubdatasetInfo object.
+//
+//************************************************************************
+%include "SubdatasetInfo.i"
+
+//************************************************************************
+//
 // Define the Relationship object.
 //
 //************************************************************************
@@ -714,6 +725,8 @@ GDALDataType GDALGetDataTypeByName( const char * pszDataTypeName );
 GDALDataType GDALDataTypeUnion( GDALDataType a, GDALDataType b );
 
 const char *GDALGetColorInterpretationName( GDALColorInterp eColorInterp );
+
+GDALColorInterp GDALGetColorInterpretationByName( const char* pszColorInterpName );
 
 const char *GDALGetPaletteInterpretationName( GDALPaletteInterp ePaletteInterp );
 
@@ -1072,6 +1085,7 @@ static void CPL_STDCALL StackingErrorHandler( CPLErr eErr, CPLErrorNum no,
 static void PushStackingErrorHandler(std::vector<ErrorStruct>* paoErrors)
 {
     CPLPushErrorHandlerEx(StackingErrorHandler, paoErrors);
+    CPLSetCurrentErrorHandlerCatchDebug(false);
 }
 
 static void PopStackingErrorHandler(std::vector<ErrorStruct>* paoErrors, bool bSuccess)
@@ -1088,7 +1102,7 @@ static void PopStackingErrorHandler(std::vector<ErrorStruct>* paoErrors, bool bS
         CPLErr eErrClass = (*paoErrors)[iError].type;
         if( bSuccess && eErrClass == CE_Failure )
         {
-            pfnPreviousHandler( eErrClass,
+            CPLCallPreviousHandler( eErrClass,
                                 (*paoErrors)[iError].no,
                                 (*paoErrors)[iError].msg );
         }
@@ -1227,7 +1241,7 @@ GDALDatasetShadow* wrapper_GDALTranslate( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1236,7 +1250,7 @@ GDALDatasetShadow* wrapper_GDALTranslate( const char* dest,
     if( bFreeOptions )
         GDALTranslateOptionsFree(translateOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1270,6 +1284,8 @@ struct GDALWarpAppOptions {
 
 /* Note: we must use 2 distinct names due to different ownership of the result */
 
+
+%apply Pointer NONNULL { GDALDatasetShadow* dstDS };
 %inline %{
 
 int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
@@ -1291,7 +1307,7 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1300,7 +1316,7 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALWarpAppOptionsFree(warpAppOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1308,6 +1324,7 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
     return bRet;
 }
 %}
+%clear GDALDatasetShadow* dstDS;
 
 #ifdef SWIGJAVA
 %rename (Warp) wrapper_GDALWarpDestName;
@@ -1335,7 +1352,7 @@ GDALDatasetShadow* wrapper_GDALWarpDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1344,7 +1361,7 @@ GDALDatasetShadow* wrapper_GDALWarpDestName( const char* dest,
     if( bFreeOptions )
         GDALWarpAppOptionsFree(warpAppOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1398,7 +1415,7 @@ int wrapper_GDALVectorTranslateDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1407,7 +1424,7 @@ int wrapper_GDALVectorTranslateDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALVectorTranslateOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1441,7 +1458,7 @@ GDALDatasetShadow* wrapper_GDALVectorTranslateDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1450,7 +1467,7 @@ GDALDatasetShadow* wrapper_GDALVectorTranslateDestName( const char* dest,
     if( bFreeOptions )
         GDALVectorTranslateOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1508,7 +1525,7 @@ GDALDatasetShadow* wrapper_GDALDEMProcessing( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1517,7 +1534,7 @@ GDALDatasetShadow* wrapper_GDALDEMProcessing( const char* dest,
     if( bFreeOptions )
         GDALDEMProcessingOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1570,7 +1587,7 @@ int wrapper_GDALNearblackDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1579,7 +1596,7 @@ int wrapper_GDALNearblackDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALNearblackOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1613,7 +1630,7 @@ GDALDatasetShadow* wrapper_GDALNearblackDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1622,7 +1639,7 @@ GDALDatasetShadow* wrapper_GDALNearblackDestName( const char* dest,
     if( bFreeOptions )
         GDALNearblackOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1677,7 +1694,7 @@ GDALDatasetShadow* wrapper_GDALGrid( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1686,7 +1703,7 @@ GDALDatasetShadow* wrapper_GDALGrid( const char* dest,
     if( bFreeOptions )
         GDALGridOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1739,7 +1756,7 @@ int wrapper_GDALRasterizeDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1748,7 +1765,7 @@ int wrapper_GDALRasterizeDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALRasterizeOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1782,7 +1799,7 @@ GDALDatasetShadow* wrapper_GDALRasterizeDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1791,7 +1808,112 @@ GDALDatasetShadow* wrapper_GDALRasterizeDestName( const char* dest,
     if( bFreeOptions )
         GDALRasterizeOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
+    return hDSRet;
+}
+%}
+
+//************************************************************************
+// gdal.Footprint()
+//************************************************************************
+
+#ifdef SWIGJAVA
+%rename (FootprintOptions) GDALFootprintOptions;
+#endif
+struct GDALFootprintOptions {
+%extend {
+    GDALFootprintOptions(char** options) {
+        return GDALFootprintOptionsNew(options, NULL);
+    }
+
+    ~GDALFootprintOptions() {
+        GDALFootprintOptionsFree( self );
+    }
+}
+};
+
+/* Note: we must use 2 distinct names due to different ownership of the result */
+
+#ifdef SWIGJAVA
+%rename (Footprint) wrapper_GDALFootprintDestDS;
+#endif
+%inline %{
+int wrapper_GDALFootprintDestDS( GDALDatasetShadow* dstDS,
+                            GDALDatasetShadow* srcDS,
+                            GDALFootprintOptions* options,
+                            GDALProgressFunc callback=NULL,
+                            void* callback_data=NULL)
+{
+    int usageError; /* ignored */
+    bool bFreeOptions = false;
+    if( callback )
+    {
+        if( options == NULL )
+        {
+            bFreeOptions = true;
+            options = GDALFootprintOptionsNew(NULL, NULL);
+        }
+        GDALFootprintOptionsSetProgress(options, callback, callback_data);
+    }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( GetUseExceptions() )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    bool bRet = (GDALFootprint(NULL, dstDS, srcDS, options, &usageError) != NULL);
+    if( bFreeOptions )
+        GDALFootprintOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( GetUseExceptions() )
+    {
+        PopStackingErrorHandler(&aoErrors, bRet);
+    }
+#endif
+    return bRet;
+}
+%}
+
+#ifdef SWIGJAVA
+%rename (Footprint) wrapper_GDALFootprintDestName;
+#endif
+%newobject wrapper_GDALFootprintDestName;
+
+%inline %{
+GDALDatasetShadow* wrapper_GDALFootprintDestName( const char* dest,
+                                             GDALDatasetShadow* srcDS,
+                                             GDALFootprintOptions* options,
+                                             GDALProgressFunc callback=NULL,
+                                             void* callback_data=NULL)
+{
+    int usageError; /* ignored */
+    bool bFreeOptions = false;
+    if( callback )
+    {
+        if( options == NULL )
+        {
+            bFreeOptions = true;
+            options = GDALFootprintOptionsNew(NULL, NULL);
+        }
+        GDALFootprintOptionsSetProgress(options, callback, callback_data);
+    }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( GetUseExceptions() )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    GDALDatasetH hDSRet = GDALFootprint(dest, NULL, srcDS, options, &usageError);
+    if( bFreeOptions )
+        GDALFootprintOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1847,7 +1969,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_objects( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1856,7 +1978,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_objects( const char* dest,
     if( bFreeOptions )
         GDALBuildVRTOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1894,7 +2016,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_names( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1903,7 +2025,78 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_names( const char* dest,
     if( bFreeOptions )
         GDALBuildVRTOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
+    return hDSRet;
+}
+%}
+%clear char** source_filenames;
+
+//************************************************************************
+// gdal.TileIndex()
+//************************************************************************
+
+#ifdef SWIGJAVA
+%rename (TileIndexOptions) GDALTileIndexOptions;
+#endif
+struct GDALTileIndexOptions {
+%extend {
+    GDALTileIndexOptions(char** options) {
+        return GDALTileIndexOptionsNew(options, NULL);
+    }
+
+    ~GDALTileIndexOptions() {
+        GDALTileIndexOptionsFree( self );
+    }
+}
+};
+
+#ifdef SWIGPYTHON
+%rename (TileIndexInternalNames) wrapper_TileIndex_names;
+#elif defined(SWIGJAVA)
+%rename (TileIndex) wrapper_TileIndex_names;
+#endif
+%newobject wrapper_TileIndex_names;
+
+%apply (char **options) {char** source_filenames};
+%inline %{
+GDALDatasetShadow* wrapper_TileIndex_names( const char* dest,
+                                            char ** source_filenames,
+                                            GDALTileIndexOptions* options,
+                                            GDALProgressFunc callback=NULL,
+                                            void* callback_data=NULL)
+{
+    int usageError; /* ignored */
+#if 0
+    bool bFreeOptions = false;
+    if( callback )
+    {
+        if( options == NULL )
+        {
+            bFreeOptions = true;
+            options = GDALTileIndexOptionsNew(NULL, NULL);
+        }
+        GDALTileIndexOptionsSetProgress(options, callback, callback_data);
+    }
+#endif
+
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( GetUseExceptions() )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    GDALDatasetH hDSRet = GDALTileIndex(dest, CSLCount(source_filenames), source_filenames, options, &usageError);
+#if 0
+    if( bFreeOptions )
+        GDALTileIndexOptionsFree(options);
+#endif
+#ifdef SWIGPYTHON
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1958,7 +2151,7 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1967,7 +2160,7 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
     if( bFreeOptions )
         GDALMultiDimTranslateOptionsFree(multiDimTranslateOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1978,3 +2171,14 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
 
 
 %clear (const char* dest);
+
+#if defined(SWIGPYTHON)
+// This enables constructs such as isinstance(x, ogr.DataSource) to
+// return True for a gdal.Dataset. We can't include it in gdal_python.i
+// because Dataset is not defined at that point.
+%pythoncode %{
+ogr.DataSource = Dataset
+ogr.Driver = Driver
+%}
+#endif
+

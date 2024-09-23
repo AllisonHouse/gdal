@@ -63,11 +63,11 @@ class OGRGeoJSONSeqDataSource final : public GDALDataset
     {
         return static_cast<int>(m_apoLayers.size());
     }
+
     OGRLayer *GetLayer(int) override;
     OGRLayer *ICreateLayer(const char *pszName,
-                           OGRSpatialReference *poSRS = nullptr,
-                           OGRwkbGeometryType eGType = wkbUnknown,
-                           char **papszOptions = nullptr) override;
+                           const OGRGeomFieldDefn *poGeomFieldDefn,
+                           CSLConstList papszOptions) override;
     int TestCapability(const char *pszCap) override;
 
     bool Open(GDALOpenInfo *poOpenInfo, GeoJSONSourceType nSrcType);
@@ -122,17 +122,25 @@ class OGRGeoJSONSeqLayer final : public OGRLayer
     {
         return GetDescription();
     }
+
     void ResetReading() override;
     OGRFeature *GetNextFeature() override;
     OGRFeatureDefn *GetLayerDefn() override;
+
     const char *GetFIDColumn() override
     {
         return m_osFIDColumn.c_str();
     }
+
     GIntBig GetFeatureCount(int) override;
     int TestCapability(const char *) override;
     OGRErr ICreateFeature(OGRFeature *poFeature) override;
-    OGRErr CreateField(OGRFieldDefn *, int) override;
+    OGRErr CreateField(const OGRFieldDefn *, int) override;
+
+    GDALDataset *GetDataset() override
+    {
+        return m_poDS;
+    }
 };
 
 /************************************************************************/
@@ -174,13 +182,15 @@ OGRLayer *OGRGeoJSONSeqDataSource::GetLayer(int nIndex)
 /*                           ICreateLayer()                             */
 /************************************************************************/
 
-OGRLayer *OGRGeoJSONSeqDataSource::ICreateLayer(const char *pszNameIn,
-                                                OGRSpatialReference *poSRS,
-                                                OGRwkbGeometryType /*eGType*/,
-                                                char **papszOptions)
+OGRLayer *OGRGeoJSONSeqDataSource::ICreateLayer(
+    const char *pszNameIn, const OGRGeomFieldDefn *poSrcGeomFieldDefn,
+    CSLConstList papszOptions)
 {
     if (!TestCapability(ODsCCreateLayer))
         return nullptr;
+
+    const auto poSRS =
+        poSrcGeomFieldDefn ? poSrcGeomFieldDefn->GetSpatialRef() : nullptr;
 
     std::unique_ptr<OGRCoordinateTransformation> poCT;
     if (poSRS == nullptr)
@@ -217,9 +227,71 @@ OGRLayer *OGRGeoJSONSeqDataSource::ICreateLayer(const char *pszNameIn,
         m_bIsRSSeparated = CPLTestBool(pszRS);
     }
 
-    m_apoLayers.emplace_back(cpl::make_unique<OGRGeoJSONSeqLayer>(
-        this, pszNameIn, papszOptions, std::move(poCT)));
-    return m_apoLayers.back().get();
+    CPLStringList aosOptions(papszOptions);
+
+    double dfXYResolution = OGRGeomCoordinatePrecision::UNKNOWN;
+    double dfZResolution = OGRGeomCoordinatePrecision::UNKNOWN;
+    if (const char *pszCoordPrecision =
+            CSLFetchNameValue(papszOptions, "COORDINATE_PRECISION"))
+    {
+        dfXYResolution = std::pow(10.0, -CPLAtof(pszCoordPrecision));
+        dfZResolution = dfXYResolution;
+    }
+    else if (poSrcGeomFieldDefn)
+    {
+        const auto &oCoordPrec = poSrcGeomFieldDefn->GetCoordinatePrecision();
+        OGRSpatialReference oSRSWGS84;
+        oSRSWGS84.SetWellKnownGeogCS("WGS84");
+        const auto oCoordPrecWGS84 =
+            oCoordPrec.ConvertToOtherSRS(poSRS, &oSRSWGS84);
+
+        if (oCoordPrec.dfXYResolution != OGRGeomCoordinatePrecision::UNKNOWN)
+        {
+            dfXYResolution = oCoordPrecWGS84.dfXYResolution;
+
+            aosOptions.SetNameValue(
+                "XY_COORD_PRECISION",
+                CPLSPrintf("%d",
+                           OGRGeomCoordinatePrecision::ResolutionToPrecision(
+                               dfXYResolution)));
+        }
+        if (oCoordPrec.dfZResolution != OGRGeomCoordinatePrecision::UNKNOWN)
+        {
+            dfZResolution = oCoordPrecWGS84.dfZResolution;
+
+            aosOptions.SetNameValue(
+                "Z_COORD_PRECISION",
+                CPLSPrintf("%d",
+                           OGRGeomCoordinatePrecision::ResolutionToPrecision(
+                               dfZResolution)));
+        }
+    }
+
+    m_apoLayers.emplace_back(std::make_unique<OGRGeoJSONSeqLayer>(
+        this, pszNameIn, aosOptions.List(), std::move(poCT)));
+
+    auto poLayer = m_apoLayers.back().get();
+    if (poLayer->GetGeomType() != wkbNone &&
+        dfXYResolution != OGRGeomCoordinatePrecision::UNKNOWN)
+    {
+        auto poGeomFieldDefn = poLayer->GetLayerDefn()->GetGeomFieldDefn(0);
+        OGRGeomCoordinatePrecision oCoordPrec(
+            poGeomFieldDefn->GetCoordinatePrecision());
+        oCoordPrec.dfXYResolution = dfXYResolution;
+        poGeomFieldDefn->SetCoordinatePrecision(oCoordPrec);
+    }
+
+    if (poLayer->GetGeomType() != wkbNone &&
+        dfZResolution != OGRGeomCoordinatePrecision::UNKNOWN)
+    {
+        auto poGeomFieldDefn = poLayer->GetLayerDefn()->GetGeomFieldDefn(0);
+        OGRGeomCoordinatePrecision oCoordPrec(
+            poGeomFieldDefn->GetCoordinatePrecision());
+        oCoordPrec.dfZResolution = dfZResolution;
+        poGeomFieldDefn->SetCoordinatePrecision(oCoordPrec);
+    }
+
+    return poLayer;
 }
 
 /************************************************************************/
@@ -277,12 +349,32 @@ OGRGeoJSONSeqLayer::OGRGeoJSONSeqLayer(
         OGRSpatialReference::GetWGS84SRS());
     m_poCT = std::move(poCT);
 
+    m_oWriteOptions.bWriteBBOX =
+        CPLTestBool(CSLFetchNameValueDef(papszOptions, "WRITE_BBOX", "FALSE"));
     m_oWriteOptions.SetRFC7946Settings();
     m_oWriteOptions.SetIDOptions(papszOptions);
-    m_oWriteOptions.nCoordPrecision =
-        atoi(CSLFetchNameValueDef(papszOptions, "COORDINATE_PRECISION", "7"));
+
+    const char *pszCoordPrecision =
+        CSLFetchNameValue(papszOptions, "COORDINATE_PRECISION");
+    if (pszCoordPrecision)
+    {
+        m_oWriteOptions.nXYCoordPrecision = atoi(pszCoordPrecision);
+        m_oWriteOptions.nZCoordPrecision = atoi(pszCoordPrecision);
+    }
+    else
+    {
+        m_oWriteOptions.nXYCoordPrecision =
+            atoi(CSLFetchNameValueDef(papszOptions, "XY_COORD_PRECISION", "7"));
+        m_oWriteOptions.nZCoordPrecision =
+            atoi(CSLFetchNameValueDef(papszOptions, "Z_COORD_PRECISION", "3"));
+    }
+
     m_oWriteOptions.nSignificantFigures =
         atoi(CSLFetchNameValueDef(papszOptions, "SIGNIFICANT_FIGURES", "-1"));
+    m_oWriteOptions.bAllowNonFiniteValues = CPLTestBool(
+        CSLFetchNameValueDef(papszOptions, "WRITE_NON_FINITE_VALUES", "FALSE"));
+    m_oWriteOptions.bAutodetectJsonStrings = CPLTestBool(
+        CSLFetchNameValueDef(papszOptions, "AUTODETECT_JSON_STRINGS", "TRUE"));
 }
 
 /************************************************************************/
@@ -364,6 +456,7 @@ bool OGRGeoJSONSeqLayer::Init(bool bLooseIdentification,
         {
             m_poFeatureDefn->AddFieldDefn(apoFieldDefn[idx].get());
         }
+        m_poFeatureDefn->Seal(true);
         m_oReader.FinalizeLayerDefn(this, m_osFIDColumn);
     }
 
@@ -482,7 +575,7 @@ json_object *OGRGeoJSONSeqLayer::GetNextObject(bool bLooseIdentification)
                (m_osFeatureBuffer.back() == '\r' ||
                 m_osFeatureBuffer.back() == '\n'))
         {
-            m_osFeatureBuffer.resize(m_osFeatureBuffer.size() - 1);
+            m_osFeatureBuffer.pop_back();
         }
         if (!m_osFeatureBuffer.empty())
         {
@@ -658,22 +751,29 @@ OGRErr OGRGeoJSONSeqLayer::ICreateFeature(OGRFeature *poFeature)
         m_oWriteOptions);
     CPLAssert(nullptr != poObj);
 
-    if (m_poDS->m_bIsRSSeparated)
+    const char *pszJson = json_object_to_json_string(poObj);
+
+    char chEOL = '\n';
+    OGRErr eErr = OGRERR_NONE;
+    if ((m_poDS->m_bIsRSSeparated &&
+         VSIFWriteL(&RS, 1, 1, m_poDS->m_fp) != 1) ||
+        VSIFWriteL(pszJson, strlen(pszJson), 1, m_poDS->m_fp) != 1 ||
+        VSIFWriteL(&chEOL, 1, 1, m_poDS->m_fp) != 1)
     {
-        VSIFPrintfL(m_poDS->m_fp, "%c", RS);
+        CPLError(CE_Failure, CPLE_FileIO, "Cannot write feature");
+        eErr = OGRERR_FAILURE;
     }
-    VSIFPrintfL(m_poDS->m_fp, "%s\n", json_object_to_json_string(poObj));
 
     json_object_put(poObj);
 
-    return OGRERR_NONE;
+    return eErr;
 }
 
 /************************************************************************/
 /*                           CreateField()                              */
 /************************************************************************/
 
-OGRErr OGRGeoJSONSeqLayer::CreateField(OGRFieldDefn *poField,
+OGRErr OGRGeoJSONSeqLayer::CreateField(const OGRFieldDefn *poField,
                                        int /* bApproxOK */)
 {
     if (m_poDS->GetAccess() != GA_Update)
@@ -718,7 +818,7 @@ bool OGRGeoJSONSeqDataSource::Open(GDALOpenInfo *poOpenInfo,
         if (poOpenInfo->eAccess == GA_Update)
             return false;
 
-        m_osTmpFile = CPLSPrintf("/vsimem/geojsonseq/%p", this);
+        m_osTmpFile = VSIMemGenerateHiddenFilename("geojsonseq");
         m_fp = VSIFileFromMemBuffer(
             m_osTmpFile.c_str(),
             reinterpret_cast<GByte *>(CPLStrdup(poOpenInfo->pszFilename)),
@@ -733,7 +833,8 @@ bool OGRGeoJSONSeqDataSource::Open(GDALOpenInfo *poOpenInfo,
             OGRGeoJSONDriverStealStoredContent(pszUnprefixedFilename);
         if (pszStoredContent)
         {
-            if (!GeoJSONSeqIsObject(pszStoredContent))
+            if (EQUAL(pszStoredContent, INVALID_CONTENT_FOR_JSON_LIKE) ||
+                !GeoJSONSeqIsObject(pszStoredContent, poOpenInfo))
             {
                 OGRGeoJSONDriverStoreContent(poOpenInfo->pszFilename,
                                              pszStoredContent);
@@ -741,7 +842,7 @@ bool OGRGeoJSONSeqDataSource::Open(GDALOpenInfo *poOpenInfo,
             }
             else
             {
-                m_osTmpFile = CPLSPrintf("/vsimem/geojsonseq/%p", this);
+                m_osTmpFile = VSIMemGenerateHiddenFilename("geojsonseq");
                 m_fp = VSIFileFromMemBuffer(
                     m_osTmpFile.c_str(),
                     reinterpret_cast<GByte *>(pszStoredContent),
@@ -772,7 +873,7 @@ bool OGRGeoJSONSeqDataSource::Open(GDALOpenInfo *poOpenInfo,
                 return false;
             }
 
-            m_osTmpFile = CPLSPrintf("/vsimem/geojsonseq/%p", this);
+            m_osTmpFile = VSIMemGenerateHiddenFilename("geojsonseq");
             m_fp = VSIFileFromMemBuffer(m_osTmpFile.c_str(), pResult->pabyData,
                                         pResult->nDataLen, true);
             pResult->pabyData = nullptr;
@@ -855,10 +956,14 @@ static int OGRGeoJSONSeqDriverIdentifyInternal(GDALOpenInfo *poOpenInfo,
     nSrcType = GeoJSONSeqGetSourceType(poOpenInfo);
     if (nSrcType == eGeoJSONSourceUnknown)
         return FALSE;
-    if (nSrcType == eGeoJSONSourceService &&
-        !STARTS_WITH_CI(poOpenInfo->pszFilename, "GeoJSONSeq:"))
+    if (nSrcType == eGeoJSONSourceService)
     {
-        return -1;
+        if (poOpenInfo->IsSingleAllowedDriver("GeoJSONSeq"))
+            return TRUE;
+        if (!STARTS_WITH_CI(poOpenInfo->pszFilename, "GeoJSONSeq:"))
+        {
+            return -1;
+        }
     }
     return TRUE;
 }
@@ -954,6 +1059,9 @@ void RegisterOGRGeoJSONSeq()
         "    <Value>String</Value>"
         "    <Value>Integer</Value>"
         "  </Option>"
+        "  <Option name='WRITE_BBOX' type='boolean' description='whether to "
+        "write a bbox property with the bounding box of each geometry' "
+        "default='NO'/>"
         "</LayerCreationOptionList>");
 
     poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
@@ -962,6 +1070,7 @@ void RegisterOGRGeoJSONSeq()
                               "Integer64List RealList StringList");
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONFIELDDATASUBTYPES, "Boolean");
     poDriver->SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL SQLITE");
+    poDriver->SetMetadataItem(GDAL_DCAP_HONOR_GEOM_COORDINATE_PRECISION, "YES");
 
     poDriver->pfnOpen = OGRGeoJSONSeqDriverOpen;
     poDriver->pfnIdentify = OGRGeoJSONSeqDriverIdentify;

@@ -33,6 +33,7 @@
 #include "cpl_multiproc.h"
 #include "cpl_vsi.h"
 
+#include "gdal.h"
 #include "ogr_api.h"
 
 static void DumpRPC(NITFImage *psImage, NITFRPC00BInfo *psRPC);
@@ -139,6 +140,8 @@ int main(int nArgc, char **papszArgv)
             bExtractSHPInMem = TRUE;
         }
     }
+
+    GDALAllRegister();
 
     /* ==================================================================== */
     /*      Loop over all files.                                            */
@@ -625,11 +628,12 @@ int main(int nArgc, char **papszArgv)
                 EQUAL(CSLFetchNameValueDef(psDES->papszMetadata, "DESID", ""),
                       "CSSHPA DES"))
             {
-                char szFilename[40];
-                char szRadix[32];
+                char szFilename[512];
+                char szRadix[256];
                 if (bExtractSHPInMem)
-                    snprintf(szRadix, sizeof(szRadix),
-                             "/vsimem/nitf_segment_%d", iSegment + 1);
+                    snprintf(szRadix, sizeof(szRadix), "%s",
+                             VSIMemGenerateHiddenFilename(
+                                 CPLSPrintf("nitf_segment_%d", iSegment + 1)));
                 else
                     snprintf(szRadix, sizeof(szRadix), "nitf_segment_%d",
                              iSegment + 1);
@@ -637,7 +641,6 @@ int main(int nArgc, char **papszArgv)
                 if (NITFDESExtractShapefile(psDES, szRadix))
                 {
                     OGRDataSourceH hDS;
-                    OGRRegisterAll();
                     snprintf(szFilename, sizeof(szFilename), "%s.SHP", szRadix);
                     hDS = OGROpen(szFilename, FALSE, NULL);
                     if (hDS)

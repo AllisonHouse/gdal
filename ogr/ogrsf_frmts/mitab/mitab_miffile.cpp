@@ -60,8 +60,9 @@
  *
  * Constructor.
  **********************************************************************/
-MIFFile::MIFFile()
-    : m_pszFname(nullptr), m_eAccessMode(TABRead), m_nVersion(300),
+MIFFile::MIFFile(GDALDataset *poDS)
+    : IMapInfoFile(poDS), m_pszFname(nullptr), m_eAccessMode(TABRead),
+      m_nVersion(300),
       // Tab is default delimiter in MIF spec if not explicitly specified.  Use
       // that by default for read mode. In write mode, we will use "," as
       // delimiter since it is more common than tab (we do this in Open())
@@ -316,6 +317,7 @@ int MIFFile::Open(const char *pszFname, TABAccess eAccess,
         CPLFree(pszFeatureClassName);
         // Ref count defaults to 0... set it to 1
         m_poDefn->Reference();
+        m_poDefn->Seal(/* bSealFields = */ true);
     }
 
     return 0;
@@ -341,6 +343,7 @@ int MIFFile::ParseMIFHeader(int *pbIsEmpty)
     CPLFree(pszFeatureClassName);
     // Ref count defaults to 0... set it to 1
     m_poDefn->Reference();
+    m_poDefn->Seal(/* bSealFields = */ true);
 
     if (m_eAccessMode != TABRead)
     {
@@ -995,7 +998,8 @@ int MIFFile::WriteMIFHeader()
         if (strlen(GetEncoding()) > 0)
             osFieldName.Recode(CPL_ENC_UTF8, GetEncoding());
 
-        char *pszCleanName = TABCleanFieldName(osFieldName);
+        char *pszCleanName =
+            TABCleanFieldName(osFieldName, GetEncoding(), m_bStrictLaundering);
         osFieldName = pszCleanName;
         CPLFree(pszCleanName);
 
@@ -1573,7 +1577,9 @@ int MIFFile::SetFeatureDefn(
             switch (poFieldDefn->GetType())
             {
                 case OFTInteger:
-                    eMapInfoType = TABFInteger;
+                    eMapInfoType = poFieldDefn->GetSubType() == OFSTBoolean
+                                       ? TABFLogical
+                                       : TABFInteger;
                     break;
                 case OFTReal:
                     eMapInfoType = TABFFloat;
@@ -1662,6 +1668,7 @@ int MIFFile::AddFieldNative(const char *pszName, TABFieldType eMapInfoType,
         CPLFree(pszFeatureClassName);
         // Ref count defaults to 0... set it to 1
         m_poDefn->Reference();
+        m_poDefn->Seal(/* bSealFields = */ true);
     }
 
     CPLString osName(NormalizeFieldName(pszName));
@@ -1760,7 +1767,8 @@ int MIFFile::AddFieldNative(const char *pszName, TABFieldType eMapInfoType,
             /*-------------------------------------------------
              * LOGICAL type (value "T" or "F")
              *------------------------------------------------*/
-            poFieldDefn = new OGRFieldDefn(osName.c_str(), OFTString);
+            poFieldDefn = new OGRFieldDefn(osName.c_str(), OFTInteger);
+            poFieldDefn->SetSubType(OFSTBoolean);
             poFieldDefn->SetWidth(1);
             break;
         default:
@@ -1772,7 +1780,7 @@ int MIFFile::AddFieldNative(const char *pszName, TABFieldType eMapInfoType,
     /*-----------------------------------------------------
      * Add the FieldDefn to the FeatureDefn
      *----------------------------------------------------*/
-    m_poDefn->AddFieldDefn(poFieldDefn);
+    whileUnsealing(m_poDefn)->AddFieldDefn(poFieldDefn);
     m_oSetFields.insert(CPLString(poFieldDefn->GetNameRef()).toupper());
     delete poFieldDefn;
 
@@ -1939,7 +1947,20 @@ int MIFFile::SetCharset(const char *pszCharset)
     {
         m_poMIFFile->SetEncoding(CharsetToEncoding(pszCharset));
     }
+    if (EQUAL(pszCharset, "UTF-8"))
+    {
+        m_nVersion = std::max(m_nVersion, 1520);
+    }
     return 0;
+}
+
+void MIFFile::SetStrictLaundering(bool bStrictLaundering)
+{
+    IMapInfoFile::SetStrictLaundering(bStrictLaundering);
+    if (!bStrictLaundering)
+    {
+        m_nVersion = std::max(m_nVersion, 1520);
+    }
 }
 
 /************************************************************************/

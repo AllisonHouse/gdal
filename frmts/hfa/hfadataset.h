@@ -53,30 +53,31 @@ class HFADataset final : public GDALPamDataset
 {
     friend class HFARasterBand;
 
-    HFAHandle hHFA;
+    HFAHandle hHFA = nullptr;
 
-    bool bMetadataDirty;
+    bool bMetadataDirty = false;
 
-    bool bGeoDirty;
+    bool bGeoDirty = false;
     double adfGeoTransform[6];
     OGRSpatialReference m_oSRS{};
 
-    bool bIgnoreUTM;
+    bool bIgnoreUTM = false;
 
     CPLErr ReadProjection();
     CPLErr WriteProjection();
-    bool bForceToPEString;
+    bool bForceToPEString = false;
+    bool bDisablePEString = false;
 
-    int nGCPCount;
-    GDAL_GCP asGCPList[36];
+    std::vector<gdal::GCP> m_aoGCPs{};
 
     void UseXFormStack(int nStepCount, Efga_Polynomial *pasPolyListForward,
                        Efga_Polynomial *pasPolyListReverse);
 
   protected:
     virtual CPLErr IRasterIO(GDALRWFlag, int, int, int, int, void *, int, int,
-                             GDALDataType, int, int *, GSpacing nPixelSpace,
-                             GSpacing nLineSpace, GSpacing nBandSpace,
+                             GDALDataType, int, BANDMAP_TYPE,
+                             GSpacing nPixelSpace, GSpacing nLineSpace,
+                             GSpacing nBandSpace,
                              GDALRasterIOExtraArg *psExtraArg) override;
 
   public:

@@ -34,25 +34,13 @@ import pytest
 
 from osgeo import gdal
 
-###############################################################################
-# Test if WEBP driver is present
-
-
-def test_webp_1():
-
-    gdaltest.webp_drv = gdal.GetDriverByName("WEBP")
-    if gdaltest.webp_drv is None:
-        pytest.skip()
-
+pytestmark = pytest.mark.require_driver("WEBP")
 
 ###############################################################################
 # Open() test
 
 
 def test_webp_2():
-
-    if gdaltest.webp_drv is None:
-        pytest.skip()
 
     ds = gdal.Open("data/webp/rgbsmall.webp")
     cs = ds.GetRasterBand(1).Checksum()
@@ -66,9 +54,6 @@ def test_webp_2():
 
 
 def test_webp_3():
-
-    if gdaltest.webp_drv is None:
-        pytest.skip()
 
     src_ds = gdal.Open("data/rgbsmall.tif")
     out_ds = gdaltest.webp_drv.CreateCopy(
@@ -89,14 +74,8 @@ def test_webp_3():
 # CreateCopy() on RGBA
 
 
+@pytest.mark.require_creation_option("WEBP", "LOSSLESS")
 def test_webp_4():
-
-    if gdaltest.webp_drv is None:
-        pytest.skip()
-
-    md = gdaltest.webp_drv.GetMetadata()
-    if md["DMD_CREATIONOPTIONLIST"].find("LOSSLESS") == -1:
-        pytest.skip()
 
     src_ds = gdal.Open("../gcore/data/stefan_full_rgba.tif")
     out_ds = gdaltest.webp_drv.CreateCopy("/vsimem/webp_4.webp", src_ds)
@@ -129,13 +108,10 @@ def test_webp_4():
 # CreateCopy() on RGBA with lossless compression
 
 
+@pytest.mark.require_creation_option("WEBP", "LOSSLESS")
 def test_webp_5():
 
-    if gdaltest.webp_drv is None:
-        pytest.skip()
-
-    md = gdaltest.webp_drv.GetMetadata()
-    if md["DMD_CREATIONOPTIONLIST"].find("LOSSLESS") == -1:
+    if gdaltest.is_travis_branch("alpine_32bit"):
         pytest.skip()
 
     src_ds = gdal.Open("../gcore/data/stefan_full_rgba.tif")
@@ -163,17 +139,9 @@ def test_webp_5():
 # CreateCopy() on RGBA with lossless compression and exact rgb values
 
 
+@pytest.mark.require_creation_option("WEBP", "LOSSLESS")
+@pytest.mark.require_creation_option("WEBP", "EXACT")
 def test_webp_6():
-
-    if gdaltest.webp_drv is None:
-        pytest.skip()
-
-    md = gdaltest.webp_drv.GetMetadata()
-    if (
-        md["DMD_CREATIONOPTIONLIST"].find("LOSSLESS") == -1
-        or md["DMD_CREATIONOPTIONLIST"].find("EXACT") == -1
-    ):
-        pytest.skip()
 
     src_ds = gdal.Open("../gcore/data/stefan_full_rgba.tif")
     out_ds = gdaltest.webp_drv.CreateCopy(
@@ -196,9 +164,6 @@ def test_webp_6():
 
 def test_webp_lossless_copy():
 
-    if gdaltest.webp_drv is None:
-        pytest.skip()
-
     outfilename = "/vsimem/out.webp"
     src_ds = gdal.Open("data/webp/rgbsmall.webp")
     assert gdaltest.webp_drv.CreateCopy(outfilename, src_ds) is not None
@@ -215,9 +180,6 @@ def test_webp_lossless_copy():
 
 
 def test_webp_lossless_copy_with_xmp():
-
-    if gdaltest.webp_drv is None:
-        pytest.skip()
 
     outfilename = "/vsimem/out.webp"
     src_ds = gdal.Open("data/webp/rgbsmall_with_xmp.webp")

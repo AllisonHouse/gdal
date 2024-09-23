@@ -89,7 +89,7 @@ class GDALEEDAIDataset final : public GDALEEDABaseDataset
     virtual CPLErr IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                              int nXSize, int nYSize, void *pData, int nBufXSize,
                              int nBufYSize, GDALDataType eBufType,
-                             int nBandCount, int *panBandMap,
+                             int nBandCount, BANDMAP_TYPE panBandMap,
                              GSpacing nPixelSpace, GSpacing nLineSpace,
                              GSpacing nBandSpace,
                              GDALRasterIOExtraArg *psExtraArg) override;
@@ -138,11 +138,13 @@ class GDALEEDAIRasterBand final : public GDALRasterBand
     virtual CPLErr IReadBlock(int, int, void *) CPL_OVERRIDE;
     virtual int GetOverviewCount() CPL_OVERRIDE;
     virtual GDALRasterBand *GetOverview(int) CPL_OVERRIDE;
+
     virtual CPLErr SetColorInterpretation(GDALColorInterp eInterp) CPL_OVERRIDE
     {
         m_eInterp = eInterp;
         return CE_None;
     }
+
     virtual GDALColorInterp GetColorInterpretation() CPL_OVERRIDE
     {
         return m_eInterp;
@@ -417,6 +419,7 @@ bool GDALEEDAIRasterBand::DecodeNPYArray(const GByte *pabyData, int nDataLen,
     }
     return true;
 }
+
 /************************************************************************/
 /*                            DecodeGDALDataset()                         */
 /************************************************************************/
@@ -430,11 +433,11 @@ bool GDALEEDAIRasterBand::DecodeGDALDataset(const GByte *pabyData, int nDataLen,
 {
     GDALEEDAIDataset *poGDS = reinterpret_cast<GDALEEDAIDataset *>(poDS);
 
-    CPLString osTmpFilename(CPLSPrintf("/vsimem/eeai/%p", this));
+    const CPLString osTmpFilename(VSIMemGenerateHiddenFilename("eedai"));
     VSIFCloseL(VSIFileFromMemBuffer(
         osTmpFilename, const_cast<GByte *>(pabyData), nDataLen, false));
     const char *const apszDrivers[] = {"PNG", "JPEG", "GTIFF", nullptr};
-    GDALDataset *poTileDS = reinterpret_cast<GDALDataset *>(GDALOpenEx(
+    GDALDataset *poTileDS = GDALDataset::FromHandle(GDALOpenEx(
         osTmpFilename, GDAL_OF_RASTER, apszDrivers, nullptr, nullptr));
     if (poTileDS == nullptr)
     {
@@ -519,7 +522,7 @@ bool GDALEEDAIRasterBand::DecodeGDALDataset(const GByte *pabyData, int nDataLen,
                     GF_Read, iXBlock * nBlockXSize, iYBlock * nBlockYSize,
                     nBlockActualXSize, nBlockActualYSize, pabyDstBuffer,
                     nBlockActualXSize, nBlockActualYSize, eDT, nDTSize,
-                    nDTSize * nBlockXSize, nullptr);
+                    static_cast<GSpacing>(nDTSize) * nBlockXSize, nullptr);
 
                 if (poBlock)
                     poBlock->DropLock();
@@ -945,13 +948,11 @@ CPLErr GDALEEDAIRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
 /*                              IRasterIO()                             */
 /************************************************************************/
 
-CPLErr GDALEEDAIDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
-                                   int nXSize, int nYSize, void *pData,
-                                   int nBufXSize, int nBufYSize,
-                                   GDALDataType eBufType, int nBandCount,
-                                   int *panBandMap, GSpacing nPixelSpace,
-                                   GSpacing nLineSpace, GSpacing nBandSpace,
-                                   GDALRasterIOExtraArg *psExtraArg)
+CPLErr GDALEEDAIDataset::IRasterIO(
+    GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize,
+    void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType,
+    int nBandCount, BANDMAP_TYPE panBandMap, GSpacing nPixelSpace,
+    GSpacing nLineSpace, GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg)
 {
 
     /* ==================================================================== */

@@ -257,6 +257,18 @@ void OGRRegisterAllInternal()
 #ifdef GTFS_ENABLED
     RegisterOGRGTFS();
 #endif
+#ifdef PMTILES_ENABLED
+    RegisterOGRPMTiles();
+#endif
+#ifdef JSONFG_ENABLED
+    RegisterOGRJSONFG();
+#endif
+#ifdef MIRAMON_ENABLED
+    RegisterOGRMiraMon();
+#endif
+#ifdef XODR_ENABLED
+    RegisterOGRXODR();
+#endif
 
     // NOTE: you need to generally insert your own driver before that line.
 

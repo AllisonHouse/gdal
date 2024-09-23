@@ -35,9 +35,8 @@
 /************************************************************************/
 
 OGRDWGDataSource::OGRDWGDataSource()
-    : fp(nullptr), iEntitiesSectionOffset(0), bInlineBlocks(FALSE),
-      bAttributes(FALSE), bAllAttributes(TRUE), poServices(nullptr),
-      poDb(static_cast<const OdRxObject *>(nullptr))
+    : bInlineBlocks(FALSE), bAttributes(FALSE), bAllAttributes(TRUE),
+      poServices(nullptr), poDb(static_cast<const OdRxObject *>(nullptr))
 
 {
 }
@@ -101,6 +100,8 @@ int OGRDWGDataSource::Open(OGRDWGServices *poServicesIn,
     bAttributes = CPLTestBool(CPLGetConfigOption("DWG_ATTRIBUTES", "FALSE"));
     bAllAttributes =
         CPLTestBool(CPLGetConfigOption("DWG_ALL_ATTRIBUTES", "TRUE"));
+    m_bClosedLineAsPolygon =
+        CPLTestBool(CPLGetConfigOption("DWG_CLOSED_LINE_AS_POLYGON", "FALSE"));
 
     /* -------------------------------------------------------------------- */
     /*      Open the file.                                                  */
@@ -208,6 +209,7 @@ void OGRDWGDataSource::ReadAttDefinitions()
         }
     }
 }
+
 /************************************************************************/
 /*                        ReadLayerDefinitions()                        */
 /************************************************************************/

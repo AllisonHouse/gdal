@@ -6,6 +6,7 @@ on:
             - 'doc/**'
         branches-ignore:
             - 'backport**'
+            - 'dependabot**'
     pull_request:
         paths-ignore:
             - 'doc/**'
@@ -20,14 +21,13 @@ permissions:
 jobs:
 
   macos_build:
-    # FIXME: Python tests fail with "ModuleNotFoundError: No module named '_gdal'" with macos-12
-    runs-on: macos-11
-    if: "!contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]')"
+    # Arm64
+    runs-on: macos-14
     steps:
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      - uses: conda-incubator/setup-miniconda@v2
+      - uses: conda-incubator/setup-miniconda@a4260408e20b96e80095f42ff7f1a15b27dd94ca # v3.0.4
         with:
             channels: conda-forge
             auto-update-conda: true
@@ -50,4 +50,4 @@ jobs:
             # Emulate a few Travis-CI env variable so that some tests get properly skipped
             TRAVIS: true
             TRAVIS_OS_NAME: osx
-            BUILD_NAME: macos_build
+            BUILD_NAME: macos_build_conda

@@ -37,6 +37,7 @@ from typing import Optional
 
 from osgeo import gdal
 from osgeo_utils.auxiliary.gdal_argparse import GDALArgumentParser, GDALScript
+from osgeo_utils.auxiliary.util import enable_gdal_exceptions
 
 
 def CopyBand(srcband, dstband):
@@ -47,6 +48,7 @@ def CopyBand(srcband, dstband):
         )
 
 
+@enable_gdal_exceptions
 def gdal_fillnodata(
     src_filename: Optional[str] = None,
     band_number: int = 1,
@@ -57,10 +59,14 @@ def gdal_fillnodata(
     mask: str = "default",
     max_distance: Real = 100,
     smoothing_iterations: int = 0,
+    interpolation: Optional[str] = None,
     options: Optional[list] = None,
 ):
     options = options or []
     creation_options = creation_options or []
+
+    if interpolation:
+        options.append("INTERPOLATION=" + interpolation)
 
     # =============================================================================
     # 	Verify we have next gen bindings with the sievefilter method.
@@ -223,6 +229,14 @@ class GDALFillNoData(GDALScript):
         )
 
         parser.add_argument(
+            "-interp",
+            "--interpolation",
+            dest="interpolation",
+            choices=["inv_dist", "nearest"],
+            help="Interpolation method.",
+        )
+
+        parser.add_argument(
             "-b",
             "-band",
             dest="band_number",
@@ -244,10 +258,12 @@ class GDALFillNoData(GDALScript):
             "-co",
             dest="creation_options",
             type=str,
-            action="extend",
-            nargs="*",
+            default=[],
+            action="append",
             metavar="name=value",
-            help="Creation options for the destination dataset.",
+            help="Passes a creation option to the output format driver. Multiple "
+            "options may be listed. See format specific documentation for legal "
+            "creation options for each format.",
         )
 
         parser.add_argument(

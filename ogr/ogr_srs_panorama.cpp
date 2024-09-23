@@ -36,14 +36,19 @@
 
 #include <cmath>
 
-constexpr double TO_DEGREES = 57.2957795130823208766;
-constexpr double TO_RADIANS = 0.017453292519943295769;
+constexpr double TO_DEGREES = 180.0 / M_PI;
+constexpr double TO_RADIANS = M_PI / 180.0;
 constexpr int NONE_VAL = -1L;
 
 // This function computes zone number from the central meridian parameter.
-static int GetZoneNumber(double dfCenterLong)
+static int GetZoneNumberGK(double dfCenterLong)
 {
-    return static_cast<int>((dfCenterLong + 3.0) / 6.0 + 0.5);
+    return static_cast<int>((dfCenterLong + 363.0) / 6.0 + 0.5) % 60;
+}
+
+static int GetZoneNumberUTM(double dfCenterLong)
+{
+    return static_cast<int>((dfCenterLong + 186.0) / 6.0);
 }
 
 static bool IsNone(long val)
@@ -127,7 +132,7 @@ constexpr int NUMBER_OF_DATUMS = static_cast<int>(CPL_ARRAYSIZE(aoDatums));
 /*  Correspondence between "Panorama" and EPSG ellipsoid codes.         */
 /************************************************************************/
 
-constexpr int aoEllips[] = {
+constexpr int aoPanoramaEllips[] = {
     0,     // 0. Undefined
     7024,  // 1. Krassovsky, 1940
     7043,  // 2. WGS, 1972
@@ -178,7 +183,8 @@ constexpr int aoEllips[] = {
     7054   // 47. PZ-90
 };
 
-constexpr int NUMBER_OF_ELLIPSOIDS = static_cast<int>(CPL_ARRAYSIZE(aoEllips));
+constexpr int NUMBER_OF_PANORAM_ELLIPSOIDS =
+    static_cast<int>(CPL_ARRAYSIZE(aoPanoramaEllips));
 
 /************************************************************************/
 /*  Correspondence between "Panorama" and EPSG vertical CS.             */
@@ -346,7 +352,7 @@ OGRErr OSRImportFromPanorama(OGRSpatialReferenceH hSRS, long iProjSys,
  * <li>[6]  False Northing</li>
  * <li>[7]  Zone number</li>
  * </ul>
- * 
+ *
  * @param bNorth If northern hemisphere true, else false. Defaults to true.
  *
  * Particular projection uses different parameters, unused ones may be set to
@@ -386,12 +392,8 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
         iProjSys == PAN_PROJ_TM)  // Pulkovo 1942 / Gauss-Kruger
     {
         int nZone = adfPrjParams[7] == 0.0
-                        ? GetZoneNumber(TO_DEGREES * adfPrjParams[3])
+                        ? GetZoneNumberGK(TO_DEGREES * adfPrjParams[3])
                         : static_cast<int>(adfPrjParams[7]);
-        if (nZone < 0)
-        {
-            nZone += 60;
-        }
 
         if (nZone > 1 && nZone < 33)
         {
@@ -403,12 +405,8 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
         iProjSys == PAN_PROJ_TM)  // Pulkovo 1995 / Gauss-Kruger
     {
         int nZone = adfPrjParams[7] == 0.0
-                        ? GetZoneNumber(TO_DEGREES * adfPrjParams[3])
+                        ? GetZoneNumberGK(TO_DEGREES * adfPrjParams[3])
                         : static_cast<int>(adfPrjParams[7]);
-        if (nZone < 0)
-        {
-            nZone += 60;
-        }
 
         if (nZone > 3 && nZone < 33)
         {
@@ -419,7 +417,7 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
         iProjSys == PAN_PROJ_UTM)  // WGS84 / UTM
     {
         const int nZone = adfPrjParams[7] == 0.0
-                              ? 30 + GetZoneNumber(TO_DEGREES * adfPrjParams[3])
+                              ? GetZoneNumberUTM(TO_DEGREES * adfPrjParams[3])
                               : static_cast<int>(adfPrjParams[7]);
         int nEPSG;
         if (bNorth)
@@ -439,7 +437,6 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
     switch (iProjSys)
     {
         case -1L:
-        case 0L:
         case 255L:
             break;
 
@@ -454,7 +451,7 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
         {
             const int nZone =
                 adfPrjParams[7] == 0.0
-                    ? 30 + GetZoneNumber(TO_DEGREES * adfPrjParams[3])
+                    ? GetZoneNumberUTM(TO_DEGREES * adfPrjParams[3])
                     : static_cast<int>(adfPrjParams[7]);
 
             SetUTM(nZone, bNorth);
@@ -506,11 +503,7 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
             if (adfPrjParams[7] == 0.0)
             {
                 dfCenterLong = TO_DEGREES * adfPrjParams[3];
-                nZone = GetZoneNumber(dfCenterLong);
-                if (dfCenterLong < 0.0)
-                {
-                    nZone += 60;
-                }
+                nZone = GetZoneNumberGK(dfCenterLong);
             }
             else
             {
@@ -629,14 +622,15 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
             oGCS.importFromEPSG(aoDatums[iDatum]);
             CopyGeogCSFrom(&oGCS);
         }
-        else if (iEllips > 0 && iEllips < NUMBER_OF_ELLIPSOIDS &&
-                 aoEllips[iEllips])
+        else if (iEllips > 0 && iEllips < NUMBER_OF_PANORAM_ELLIPSOIDS &&
+                 aoPanoramaEllips[iEllips])
         {
             char *pszName = nullptr;
             double dfSemiMajor = 0.0;
             double dfInvFlattening = 0.0;
 
-            if (OSRGetEllipsoidInfo(aoEllips[iEllips], &pszName, &dfSemiMajor,
+            if (OSRGetEllipsoidInfo(aoPanoramaEllips[iEllips], &pszName,
+                                    &dfSemiMajor,
                                     &dfInvFlattening) == OGRERR_NONE)
             {
                 SetGeogCS(
@@ -646,7 +640,7 @@ OGRErr OGRSpatialReference::importFromPanorama(long iProjSys, long iDatum,
                                        pszName),
                     pszName, dfSemiMajor, dfInvFlattening, nullptr, 0.0,
                     nullptr, 0.0);
-                SetAuthority("SPHEROID", "EPSG", aoEllips[iEllips]);
+                SetAuthority("SPHEROID", "EPSG", aoPanoramaEllips[iEllips]);
             }
             else
             {
@@ -806,6 +800,7 @@ OGRErr OGRSpatialReference::exportVertCSToPanorama(int *piVert) const
              "Vertical coordinate system not supported by Panorama");
     return OGRERR_UNSUPPORTED_SRS;
 }
+
 /************************************************************************/
 /*                      OSRExportToPanorama()                           */
 /************************************************************************/
@@ -979,6 +974,14 @@ OGRErr OGRSpatialReference::exportToPanorama(long *piProjSys, long *piDatum,
 
         *piZone = GetUTMZone(&bNorth);
 
+        auto dfCenterLong = GetNormProjParm(SRS_PP_CENTRAL_MERIDIAN, 0.0);
+        padfPrjParams[3] = TO_RADIANS * dfCenterLong;
+        padfPrjParams[2] =
+            TO_RADIANS * GetNormProjParm(SRS_PP_LATITUDE_OF_ORIGIN, 0.0);
+        padfPrjParams[4] = GetNormProjParm(SRS_PP_SCALE_FACTOR, 1.0);
+        padfPrjParams[5] = GetNormProjParm(SRS_PP_FALSE_EASTING, 0.0);
+        padfPrjParams[6] = GetNormProjParm(SRS_PP_FALSE_NORTHING, 0.0);
+
         if (*piZone != 0)
         {
             *piProjSys = PAN_PROJ_UTM;
@@ -988,18 +991,7 @@ OGRErr OGRSpatialReference::exportToPanorama(long *piProjSys, long *piDatum,
         else
         {
             *piProjSys = PAN_PROJ_TM;
-            auto dfCenterLong = GetNormProjParm(SRS_PP_CENTRAL_MERIDIAN, 0.0);
-            padfPrjParams[3] = TO_RADIANS * dfCenterLong;
-            padfPrjParams[2] =
-                TO_RADIANS * GetNormProjParm(SRS_PP_LATITUDE_OF_ORIGIN, 0.0);
-            padfPrjParams[4] = GetNormProjParm(SRS_PP_SCALE_FACTOR, 1.0);
-            padfPrjParams[5] = GetNormProjParm(SRS_PP_FALSE_EASTING, 0.0);
-            padfPrjParams[6] = GetNormProjParm(SRS_PP_FALSE_NORTHING, 0.0);
-            auto nZone = GetZoneNumber(dfCenterLong);
-            if (dfCenterLong < 0.0)
-            {
-                nZone += 60;
-            }
+            auto nZone = GetZoneNumberGK(dfCenterLong);
             *piZone = nZone;
         }
     }
@@ -1140,15 +1132,15 @@ OGRErr OGRSpatialReference::exportToPanorama(long *piProjSys, long *piDatum,
 #endif
 
         int i = 0;  // Used after for.
-        for (; i < NUMBER_OF_ELLIPSOIDS; i++)
+        for (; i < NUMBER_OF_PANORAM_ELLIPSOIDS; i++)
         {
-            if (aoEllips[i])
+            if (aoPanoramaEllips[i])
             {
                 double dfSM = 0.0;
                 double dfIF = 1.0;
 
-                if (OSRGetEllipsoidInfo(aoEllips[i], nullptr, &dfSM, &dfIF) ==
-                        OGRERR_NONE &&
+                if (OSRGetEllipsoidInfo(aoPanoramaEllips[i], nullptr, &dfSM,
+                                        &dfIF) == OGRERR_NONE &&
                     std::abs(dfSemiMajor - dfSM) < 1e-10 * dfSemiMajor &&
                     std::abs(dfInvFlattening - dfIF) < 1e-10 * dfInvFlattening)
                 {
@@ -1158,7 +1150,7 @@ OGRErr OGRSpatialReference::exportToPanorama(long *piProjSys, long *piDatum,
             }
         }
 
-        if (i == NUMBER_OF_ELLIPSOIDS)  // Didn't found matches.
+        if (i == NUMBER_OF_PANORAM_ELLIPSOIDS)  // Didn't found matches.
         {
 #ifdef DEBUG
             CPLDebug("OSR_Panorama",

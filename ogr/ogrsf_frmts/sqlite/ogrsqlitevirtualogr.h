@@ -37,7 +37,9 @@ class OGR2SQLITEModule;
 OGR2SQLITEModule *OGR2SQLITE_Setup(GDALDataset *poDS,
                                    OGRSQLiteDataSource *poSQLiteDS);
 
-int OGR2SQLITE_AddExtraDS(OGR2SQLITEModule *poModule, OGRDataSource *poDS);
+void OGR2SQLITE_SetCaseSensitiveLike(OGR2SQLITEModule *poModule, bool b);
+
+int OGR2SQLITE_AddExtraDS(OGR2SQLITEModule *poModule, GDALDataset *poDS);
 
 void OGR2SQLITE_Register();
 

@@ -51,7 +51,8 @@ static int OGROSMDriverIdentify(GDALOpenInfo *poOpenInfo)
     if (poOpenInfo->fpL == nullptr || poOpenInfo->nHeaderBytes == 0)
         return GDAL_IDENTIFY_FALSE;
 
-    if (strstr((const char *)poOpenInfo->pabyHeader, "<osm") != nullptr)
+    if (strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader),
+               "<osm") != nullptr)
     {
         return GDAL_IDENTIFY_TRUE;
     }
@@ -130,6 +131,11 @@ void RegisterOGROSM()
         "will go to disk' default='100'/>"
         "  <Option name='INTERLEAVED_READING' type='boolean' "
         "description='Whether to enable interleaved reading.' default='NO'/>"
+        "  <Option name='TAGS_FORMAT' type='string-select' "
+        "description='Format for all_tags/other_tags fields.' default='HSTORE'>"
+        "    <Value>HSTORE</Value>"
+        "    <Value>JSON</Value>"
+        "  </Option>"
         "</OpenOptionList>");
 
     poDriver->pfnOpen = OGROSMDriverOpen;

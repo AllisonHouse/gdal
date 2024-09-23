@@ -32,6 +32,7 @@
 #include "ogr_srs_api.h"
 #include "rawdataset.h"
 
+#include <algorithm>
 #include <limits>
 
 /**
@@ -89,6 +90,7 @@ class GTXDataset final : public RawDataset
         adfGeoTransform[4] = 0.0;
         adfGeoTransform[5] = 1.0;
     }
+
     ~GTXDataset() override;
 
     CPLErr GetGeoTransform(double *padfTransform) override;
@@ -237,11 +239,10 @@ GDALDataset *GTXDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    GTXDataset *poDS = new GTXDataset();
+    auto poDS = std::make_unique<GTXDataset>();
 
     poDS->eAccess = poOpenInfo->eAccess;
-    poDS->fpImage = poOpenInfo->fpL;
-    poOpenInfo->fpL = nullptr;
+    std::swap(poDS->fpImage, poOpenInfo->fpL);
 
     /* -------------------------------------------------------------------- */
     /*      Read the header.                                                */
@@ -290,7 +291,6 @@ GDALDataset *GTXDataset::Open(GDALOpenInfo *poOpenInfo)
         static_cast<vsi_l_offset>(poDS->nRasterXSize) * poDS->nRasterYSize >
             std::numeric_limits<vsi_l_offset>::max() / sizeof(double))
     {
-        delete poDS;
         return nullptr;
     }
 
@@ -309,20 +309,21 @@ GDALDataset *GTXDataset::Open(GDALOpenInfo *poOpenInfo)
     const int nDTSize = GDALGetDataTypeSizeBytes(eDT);
     if (nDTSize <= 0 || poDS->nRasterXSize > INT_MAX / nDTSize)
     {
-        delete poDS;
         return nullptr;
     }
 
     /* -------------------------------------------------------------------- */
     /*      Create band information object.                                 */
     /* -------------------------------------------------------------------- */
-    GTXRasterBand *poBand = new GTXRasterBand(
-        poDS, 1, poDS->fpImage,
+    auto poBand = std::make_unique<GTXRasterBand>(
+        poDS.get(), 1, poDS->fpImage,
         static_cast<vsi_l_offset>(poDS->nRasterYSize - 1) * poDS->nRasterXSize *
                 nDTSize +
             40,
         nDTSize, poDS->nRasterXSize * -nDTSize, eDT, !CPL_IS_LSB);
-    poDS->SetBand(1, poBand);
+    if (!poBand->IsValid())
+        return nullptr;
+    poDS->SetBand(1, std::move(poBand));
 
     /* -------------------------------------------------------------------- */
     /*      Initialize any PAM information.                                 */
@@ -333,9 +334,9 @@ GDALDataset *GTXDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Check for overviews.                                            */
     /* -------------------------------------------------------------------- */
-    poDS->oOvManager.Initialize(poDS, poOpenInfo->pszFilename);
+    poDS->oOvManager.Initialize(poDS.get(), poOpenInfo->pszFilename);
 
-    return poDS;
+    return poDS.release();
 }
 
 /************************************************************************/
@@ -461,7 +462,7 @@ GDALDataset *GTXDataset::Create(const char *pszFilename, int nXSize, int nYSize,
     CPL_IGNORE_RET_VAL(VSIFWriteL(header, 40, 1, fp));
     CPL_IGNORE_RET_VAL(VSIFCloseL(fp));
 
-    return reinterpret_cast<GDALDataset *>(GDALOpen(pszFilename, GA_Update));
+    return GDALDataset::FromHandle(GDALOpen(pszFilename, GA_Update));
 }
 
 /************************************************************************/

@@ -34,6 +34,7 @@ import sys
 from typing import Optional
 
 from osgeo import gdal, osr
+from osgeo_utils.auxiliary.util import enable_gdal_exceptions
 
 ###############################################################################
 
@@ -47,6 +48,7 @@ def fmt_loc(srs_obj, loc):
 ###############################################################################
 
 
+@enable_gdal_exceptions
 def move(
     filename: str,
     t_srs: str,
@@ -233,23 +235,23 @@ def move(
 ###############################################################################
 
 
-def Usage():
+def Usage(isError=True):
+    f = sys.stderr if isError else sys.stdout
     print(
-        """Usage: gdalmove.py [-s_srs <srs_defn>] -t_srs <srs_defn>
-            [-et <max_pixel_err>] target_file"""
+        """Usage: gdalmove.py [--help] [--help-general]
+                   [-s_srs <srs_defn>] -t_srs <srs_defn>
+                   [-et <max_pixel_err>] <target_file>""",
+        file=f,
     )
-    return 2
+    return 2 if isError else 0
 
 
 def main(argv=sys.argv):
-    # Default GDAL argument parsing.
 
+    # Default GDAL argument parsing.
     argv = gdal.GeneralCmdLineProcessor(argv)
     if argv is None:
         return 0
-
-    if len(argv) == 1:
-        return Usage()
 
     # Script argument defaults
     s_srs = None
@@ -262,7 +264,10 @@ def main(argv=sys.argv):
     i = 1
     while i < len(argv):
 
-        if argv[i] == "-s_srs" and i < len(argv) - 1:
+        if argv[i] == "--help":
+            return Usage(isError=False)
+
+        elif argv[i] == "-s_srs" and i < len(argv) - 1:
             s_srs = argv[i + 1]
             i += 1
 
@@ -283,6 +288,9 @@ def main(argv=sys.argv):
 
         i = i + 1
         # next argument
+
+    if len(argv) == 1:
+        return Usage()
 
     if filename is None:
         print("Missing name of file to operate on, but required.")

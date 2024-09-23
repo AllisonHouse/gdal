@@ -50,7 +50,11 @@ from osgeo_utils.auxiliary.color_table import ColorTableLike, get_color_table
 from osgeo_utils.auxiliary.extent_util import GT, Extent
 from osgeo_utils.auxiliary.gdal_argparse import GDALArgumentParser, GDALScript
 from osgeo_utils.auxiliary.rectangle import GeoRectangle
-from osgeo_utils.auxiliary.util import GetOutputDriverFor, open_ds
+from osgeo_utils.auxiliary.util import (
+    GetOutputDriverFor,
+    enable_gdal_exceptions,
+    open_ds,
+)
 
 GDALDataType = int
 
@@ -104,6 +108,7 @@ sum all files with hidden noDataValue
 """
 
 
+@enable_gdal_exceptions
 def Calc(
     calc: MaybeSequence[str],
     outfile: Optional[PathLikeOrStr] = None,
@@ -121,6 +126,7 @@ def Calc(
     user_namespace: Optional[Dict] = None,
     debug: bool = False,
     quiet: bool = False,
+    progress_callback: Optional = gdal.TermProgress_nocb,
     **input_files,
 ):
 
@@ -442,7 +448,7 @@ def Calc(
         if ProjectionCheck:
             myOut.SetProjection(ProjectionCheck)
 
-        if NoDataValue is None:
+        if NoDataValue is None and not hideNoData:
             myOutNDV = DefaultNDVLookup[
                 myOutType
             ]  # use the default noDataValue for this datatype
@@ -463,9 +469,6 @@ def Calc(
                 myOutB.SetRasterColorInterpretation(gdal.GCI_PaletteIndex)
 
             myOutB = None  # write to band
-
-        if hideNoData:
-            myOutNDV = None
 
     myOutTypeName = gdal.GetDataTypeName(myOutType)
     if debug:
@@ -489,7 +492,6 @@ def Calc(
 
     # variables for displaying progress
     ProgressCt = -1
-    ProgressMk = -1
     ProgressEnd = nXBlocks * nYBlocks * allBandsCount
 
     ################################################################
@@ -544,9 +546,8 @@ def Calc(
             # loop through Y lines
             for Y in range(0, nYBlocks):
                 ProgressCt += 1
-                if 10 * ProgressCt / ProgressEnd % 10 != ProgressMk and not quiet:
-                    ProgressMk = 10 * ProgressCt / ProgressEnd % 10
-                    print("%d.." % (10 * ProgressMk), end=" ")
+                if not quiet:
+                    progress_callback(float(ProgressCt) / ProgressEnd, "", None)
 
                 # change the block size of the final piece
                 if Y == nYBlocks - 1:
@@ -666,7 +667,7 @@ def Calc(
         raise Exception("Dataset writing failed")
 
     if not quiet:
-        print("100 - Done")
+        progress_callback(1.0, "", None)
 
     return myOut
 
@@ -689,8 +690,8 @@ class GDALCalc(GDALScript):
             Note that all files must have the same dimensions (unless extent option is used),
             but no projection checking is performed (unless projectionCheck option is used)."""
         )
-        # add an explicit --help option because the standard -h/--help option is not valid as -h is an alpha option
-        self.add_help = "--help"
+        # -h is an alpha option
+        self.disable_h_option = True
         self.optfile_arg = "--optfile"
 
         self.add_example(
@@ -755,8 +756,19 @@ class GDALCalc(GDALScript):
             except argparse.ArgumentError:
                 pass
 
+    def float_or_none(self, NoDataValue: str) -> Union[float, str]:
+        if NoDataValue.lower() == "none":
+            return NoDataValue
+
+        try:
+            return float(NoDataValue)
+        except ValueError:
+            msg = f"Invalid float value for NoDataValue: {NoDataValue}"
+            raise argparse.ArgumentTypeError(msg)
+
     def get_parser(self, argv) -> GDALArgumentParser:
         parser = self.parser
+
         parser.add_argument(
             "--calc",
             dest="calc",
@@ -782,7 +794,7 @@ class GDALCalc(GDALScript):
         parser.add_argument(
             "--NoDataValue",
             dest="NoDataValue",
-            type=float,
+            type=self.float_or_none,
             metavar="value",
             help="output nodata value (default datatype specific value)",
         )

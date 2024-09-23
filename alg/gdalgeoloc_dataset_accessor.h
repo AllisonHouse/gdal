@@ -82,6 +82,7 @@ class GDALGeoLocDatasetAccessors
 
     GDALDataset *GetBackmapDataset();
     void FlushBackmapCaches();
+
     static void ReleaseBackmapDataset(GDALDataset *)
     {
     }
@@ -116,10 +117,14 @@ bool GDALGeoLocDatasetAccessors::AllocateBackMap()
     if (poDriver == nullptr)
         return false;
 
+    // CPLResetExtension / CPLGenerateTempFilename generate short-lived strings,
+    // so store them in a long-lived std::string
+    const std::string osBackmapTmpFilename =
+        CPLResetExtension(CPLGenerateTempFilename(nullptr), "tif");
     m_poBackmapTmpDataset = poDriver->Create(
-        CPLResetExtension(CPLGenerateTempFilename(nullptr), "tif"),
-        m_psTransform->nBackMapWidth, m_psTransform->nBackMapHeight, 2,
-        GDT_Float32, m_aosGTiffCreationOptions.List());
+        osBackmapTmpFilename.c_str(), m_psTransform->nBackMapWidth,
+        m_psTransform->nBackMapHeight, 2, GDT_Float32,
+        m_aosGTiffCreationOptions.List());
     if (m_poBackmapTmpDataset == nullptr)
     {
         return false;
@@ -132,10 +137,14 @@ bool GDALGeoLocDatasetAccessors::AllocateBackMap()
     backMapXAccessor.SetBand(poBandX);
     backMapYAccessor.SetBand(poBandY);
 
+    // CPLResetExtension / CPLGenerateTempFilename generate short-lived strings,
+    // so store them in a long-lived std::string
+    const std::string osBackmapWeightsTmpFilename =
+        CPLResetExtension(CPLGenerateTempFilename(nullptr), "tif");
     m_poBackmapWeightsTmpDataset = poDriver->Create(
-        CPLResetExtension(CPLGenerateTempFilename(nullptr), "tif"),
-        m_psTransform->nBackMapWidth, m_psTransform->nBackMapHeight, 1,
-        GDT_Float32, m_aosGTiffCreationOptions.List());
+        osBackmapWeightsTmpFilename.c_str(), m_psTransform->nBackMapWidth,
+        m_psTransform->nBackMapHeight, 1, GDT_Float32,
+        m_aosGTiffCreationOptions.List());
     if (m_poBackmapWeightsTmpDataset == nullptr)
     {
         return false;
@@ -213,9 +222,13 @@ bool GDALGeoLocDatasetAccessors::LoadGeoloc(bool bIsRegularGrid)
         if (poDriver == nullptr)
             return false;
 
-        m_poGeolocTmpDataset = poDriver->Create(
-            CPLResetExtension(CPLGenerateTempFilename(nullptr), "tif"), nXSize,
-            nYSize, 2, GDT_Float64, m_aosGTiffCreationOptions.List());
+        // CPLResetExtension / CPLGenerateTempFilename generate short-lived
+        // strings, so store them in a long-lived std::string
+        const std::string osGeolocTmpFilename =
+            CPLResetExtension(CPLGenerateTempFilename(nullptr), "tif");
+        m_poGeolocTmpDataset =
+            poDriver->Create(osGeolocTmpFilename.c_str(), nXSize, nYSize, 2,
+                             GDT_Float64, m_aosGTiffCreationOptions.List());
         if (m_poGeolocTmpDataset == nullptr)
         {
             return false;
@@ -289,8 +302,8 @@ bool GDALGeoLocDatasetAccessors::LoadGeoloc(bool bIsRegularGrid)
             GDALRasterBand::FromHandle(m_psTransform->hBand_Y));
     }
 
-    return GDALGeoLoc<GDALGeoLocDatasetAccessors>::LoadGeolocFinish(
-        m_psTransform);
+    GDALGeoLoc<GDALGeoLocDatasetAccessors>::LoadGeolocFinish(m_psTransform);
+    return true;
 }
 
 /*! @endcond */

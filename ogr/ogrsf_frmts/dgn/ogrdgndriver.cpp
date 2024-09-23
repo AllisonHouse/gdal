@@ -30,14 +30,38 @@
 #include "cpl_conv.h"
 
 /************************************************************************/
-/*                                Open()                                */
+/*                       OGRDGNDriverIdentify()                         */
 /************************************************************************/
 
 static int OGRDGNDriverIdentify(GDALOpenInfo *poOpenInfo)
 
 {
-    return poOpenInfo->fpL != nullptr && poOpenInfo->nHeaderBytes >= 512 &&
-           DGNTestOpen(poOpenInfo->pabyHeader, poOpenInfo->nHeaderBytes);
+    if (poOpenInfo->fpL != nullptr && poOpenInfo->nHeaderBytes >= 512 &&
+        DGNTestOpen(poOpenInfo->pabyHeader, poOpenInfo->nHeaderBytes))
+    {
+        return TRUE;
+    }
+
+    // Is this is a DGNv8 file ? If so, and if the DGNV8 driver is not
+    // available, and we are called from GDALError(), emit an explicit
+    // error.
+    VSIStatBuf sStat;
+    if ((poOpenInfo->nOpenFlags & GDAL_OF_FROM_GDALOPEN) != 0 &&
+        poOpenInfo->papszAllowedDrivers == nullptr &&
+        poOpenInfo->fpL != nullptr && poOpenInfo->nHeaderBytes >= 512 &&
+        memcmp(poOpenInfo->pabyHeader, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8) ==
+            0 &&
+        EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "DGN") &&
+        VSIStat(poOpenInfo->pszFilename, &sStat) == 0 &&
+        GDALGetDriverByName("DGNV8") == nullptr)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "`%s' recognized as a DGNv8 dataset, but the DGNv8 driver is "
+                 "not available in this GDAL build. Consult "
+                 "https://gdal.org/drivers/vector/dgnv8.html",
+                 poOpenInfo->pszFilename);
+    }
+    return FALSE;
 }
 
 /************************************************************************/
@@ -52,9 +76,7 @@ static GDALDataset *OGRDGNDriverOpen(GDALOpenInfo *poOpenInfo)
 
     OGRDGNDataSource *poDS = new OGRDGNDataSource();
 
-    if (!poDS->Open(poOpenInfo->pszFilename, TRUE,
-                    (poOpenInfo->eAccess == GA_Update)) ||
-        poDS->GetLayerCount() == 0)
+    if (!poDS->Open(poOpenInfo) || poDS->GetLayerCount() == 0)
     {
         delete poDS;
         return nullptr;
@@ -108,6 +130,13 @@ void RegisterOGRDGN()
     poDriver->SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL SQLITE");
 
     poDriver->SetMetadataItem(
+        GDAL_DMD_OPENOPTIONLIST,
+        "<OpenOptionList>"
+        "  <Option name='ENCODING' type='string' description="
+        "'Encoding name, as supported by iconv'/>"
+        "</OpenOptionList>");
+
+    poDriver->SetMetadataItem(
         GDAL_DMD_CREATIONOPTIONLIST,
         "<CreationOptionList>"
         "  <Option name='3D' type='boolean' description='whether 2D "
@@ -143,6 +172,8 @@ void RegisterOGRDGN()
         "  <Option name='ORIGIN' type='string' description='Value as x,y,z. "
         "Override the origin of the design plane. By default the origin from "
         "the seed file is used.'/>"
+        "  <Option name='ENCODING' type='string' description="
+        "'Encoding name, as supported by iconv'/>"
         "</CreationOptionList>");
 
     poDriver->SetMetadataItem(GDAL_DS_LAYER_CREATIONOPTIONLIST,

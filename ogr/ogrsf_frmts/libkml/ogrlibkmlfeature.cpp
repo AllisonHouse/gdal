@@ -456,8 +456,10 @@ FeaturePtr feat2kml(OGRLIBKMLDataSource *poOgrDS, OGRLIBKMLLayer *poOgrLayer,
             }
 
             ElementPtr poKmlElement = geom2kml(poOgrGeom, -1, poKmlFactory);
+            if (!poKmlElement)
+                return nullptr;
 
-            poKmlPhotoOverlay->set_point(AsPoint(poKmlElement));
+            poKmlPhotoOverlay->set_point(AsPoint(std::move(poKmlElement)));
         }
     }
 
@@ -809,9 +811,14 @@ FeaturePtr feat2kml(OGRLIBKMLDataSource *poOgrDS, OGRLIBKMLLayer *poOgrLayer,
         const PlacemarkPtr poKmlPlacemark = poKmlFactory->CreatePlacemark();
         poKmlFeature = poKmlPlacemark;
 
-        ElementPtr poKmlElement = geom2kml(poOgrGeom, -1, poKmlFactory);
+        if (poOgrGeom)
+        {
+            ElementPtr poKmlElement = geom2kml(poOgrGeom, -1, poKmlFactory);
+            if (!poKmlElement)
+                return nullptr;
 
-        poKmlPlacemark->set_geometry(AsGeometry(poKmlElement));
+            poKmlPlacemark->set_geometry(AsGeometry(std::move(poKmlElement)));
+        }
     }
 
     if (!camera)

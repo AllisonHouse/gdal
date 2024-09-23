@@ -40,6 +40,8 @@
 #include <fstream>
 #endif
 
+#include <limits>
+
 #include "gtest_include.h"
 
 namespace marching_squares
@@ -51,9 +53,11 @@ class TestPolygonWriter
     {
         currentPolygon_ = &polygons_[level];
     }
+
     void endPolygon()
     {
     }
+
     void addPart(const std::list<marching_squares::Point> &ring)
     {
         PolygonPart part;
@@ -61,6 +65,7 @@ class TestPolygonWriter
         currentPolygon_->emplace_back(part);
         currentPart_ = &currentPolygon_->back();
     }
+
     void addInteriorRing(const std::list<marching_squares::Point> &ring)
     {
         currentPart_->push_back(ring);
@@ -168,7 +173,8 @@ TEST_F(test_ms_polygon, dummy)
     TestPolygonWriter w;
     {
         PolygonRingAppender<TestPolygonWriter> appender(w);
-        IntervalLevelRangeIterator levels(0.0, 10.0);
+        IntervalLevelRangeIterator levels(
+            0.0, 10.0, -std::numeric_limits<double>::infinity());
         SegmentMerger<PolygonRingAppender<TestPolygonWriter>,
                       IntervalLevelRangeIterator>
             writer(appender, levels, /* polygonize */ true);
@@ -231,7 +237,8 @@ TEST_F(test_ms_polygon, four_pixels)
     TestPolygonWriter w;
     {
         PolygonRingAppender<TestPolygonWriter> appender(w);
-        IntervalLevelRangeIterator levels(0.0, 10.0);
+        IntervalLevelRangeIterator levels(
+            0.0, 10.0, -std::numeric_limits<double>::infinity());
         SegmentMerger<PolygonRingAppender<TestPolygonWriter>,
                       IntervalLevelRangeIterator>
             writer(appender, levels, /* polygonize */ true);
@@ -301,7 +308,9 @@ TEST_F(test_ms_polygon, four_pixels_2)
     {
         PolygonRingAppender<TestPolygonWriter> appender(w);
         const double levels[] = {155.0};
-        FixedLevelRangeIterator levelGenerator(levels, 1);
+        FixedLevelRangeIterator levelGenerator(
+            levels, 1, -std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity());
         SegmentMerger<PolygonRingAppender<TestPolygonWriter>,
                       FixedLevelRangeIterator>
             writer(appender, levelGenerator, /* polygonize */ true);
@@ -397,7 +406,8 @@ TEST_F(test_ms_polygon, nine_pixels)
     TestPolygonWriter w;
     {
         PolygonRingAppender<TestPolygonWriter> appender(w);
-        IntervalLevelRangeIterator levels(1.0, 10.0);
+        IntervalLevelRangeIterator levels(
+            1.0, 10.0, -std::numeric_limits<double>::infinity());
         SegmentMerger<PolygonRingAppender<TestPolygonWriter>,
                       IntervalLevelRangeIterator>
             writer(appender, levels, /* polygonize */ true);
@@ -449,7 +459,8 @@ TEST_F(test_ms_polygon, three_nested_rings)
     TestPolygonWriter w;
     {
         PolygonRingAppender<TestPolygonWriter> appender(w);
-        IntervalLevelRangeIterator levels(1.0, 2.0);
+        IntervalLevelRangeIterator levels(
+            1.0, 2.0, -std::numeric_limits<double>::infinity());
         SegmentMerger<PolygonRingAppender<TestPolygonWriter>,
                       IntervalLevelRangeIterator>
             writer(appender, levels, /* polygonize */ true);

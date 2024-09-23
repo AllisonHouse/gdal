@@ -8,10 +8,10 @@ Development
 .. toctree::
     :maxdepth: 1
 
-    dev_environment
     building_from_source
-    testing
+    dev_environment
     dev_practices
+    testing
     dev_documentation
     cmake
     rfc/index

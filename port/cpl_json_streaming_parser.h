@@ -55,6 +55,7 @@ class CPL_DLL CPLJSonStreamingParser
 
     bool m_bExceptionOccurred = false;
     bool m_bElementFound = false;
+    bool m_bStopParsing = false;
     int m_nLastChar = 0;
     int m_nLineCounter = 1;
     int m_nCharCounter = 1;
@@ -80,12 +81,14 @@ class CPL_DLL CPLJSonStreamingParser
         KEY_FINISHED,
         IN_VALUE
     };
+
     std::vector<MemberState> m_aeObjectState{};
 
     enum State currentState()
     {
         return m_aState.back();
     }
+
     void SkipSpace(const char *&pStr, size_t &nLength);
     void AdvanceChar(const char *&pStr, size_t &nLength);
     bool EmitUnexpectedChar(char ch, const char *pszExpecting = nullptr);
@@ -96,6 +99,7 @@ class CPL_DLL CPLJSonStreamingParser
 
   protected:
     bool EmitException(const char *pszMessage);
+    void StopParsing();
 
   public:
     CPLJSonStreamingParser();
@@ -103,6 +107,7 @@ class CPL_DLL CPLJSonStreamingParser
 
     void SetMaxDepth(size_t nVal);
     void SetMaxStringSize(size_t nVal);
+
     bool ExceptionOccurred() const
     {
         return m_bExceptionOccurred;
@@ -116,12 +121,15 @@ class CPL_DLL CPLJSonStreamingParser
     virtual void String(const char * /*pszValue*/, size_t /*nLength*/)
     {
     }
+
     virtual void Number(const char * /*pszValue*/, size_t /*nLength*/)
     {
     }
+
     virtual void Boolean(bool /*b*/)
     {
     }
+
     virtual void Null()
     {
     }
@@ -129,9 +137,11 @@ class CPL_DLL CPLJSonStreamingParser
     virtual void StartObject()
     {
     }
+
     virtual void EndObject()
     {
     }
+
     virtual void StartObjectMember(const char * /*pszKey*/, size_t /*nLength*/)
     {
     }
@@ -139,9 +149,11 @@ class CPL_DLL CPLJSonStreamingParser
     virtual void StartArray()
     {
     }
+
     virtual void EndArray()
     {
     }
+
     virtual void StartArrayMember()
     {
     }

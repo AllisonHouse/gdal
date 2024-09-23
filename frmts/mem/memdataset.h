@@ -63,12 +63,10 @@ class CPL_DLL MEMDataset CPL_NON_FINAL : public GDALDataset
 
     OGRSpatialReference m_oSRS{};
 
-    int m_nGCPCount;
-    GDAL_GCP *m_pasGCPs;
+    std::vector<gdal::GCP> m_aoGCPs{};
     OGRSpatialReference m_oGCPSRS{};
 
-    int m_nOverviewDSCount;
-    GDALDataset **m_papoOverviewDS;
+    std::vector<std::unique_ptr<GDALDataset>> m_apoOverviewDS{};
 
     struct Private;
     std::unique_ptr<Private> m_poPrivate;
@@ -85,6 +83,12 @@ class CPL_DLL MEMDataset CPL_NON_FINAL : public GDALDataset
     static GDALDataset *CreateBase(const char *pszFilename, int nXSize,
                                    int nYSize, int nBands, GDALDataType eType,
                                    char **papszParamList);
+
+  protected:
+    bool CanBeCloned(int nScopeFlags, bool bCanShareState) const override;
+
+    std::unique_ptr<GDALDataset> Clone(int nScopeFlags,
+                                       bool bCanShareState) const override;
 
   public:
     MEMDataset();
@@ -108,7 +112,7 @@ class CPL_DLL MEMDataset CPL_NON_FINAL : public GDALDataset
     virtual CPLErr IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                              int nXSize, int nYSize, void *pData, int nBufXSize,
                              int nBufYSize, GDALDataType eBufType,
-                             int nBandCount, int *panBandMap,
+                             int nBandCount, BANDMAP_TYPE panBandMap,
                              GSpacing nPixelSpaceBuf, GSpacing nLineSpaceBuf,
                              GSpacing nBandSpaceBuf,
                              GDALRasterIOExtraArg *psExtraArg) override;
@@ -142,9 +146,6 @@ class CPL_DLL MEMDataset CPL_NON_FINAL : public GDALDataset
 class CPL_DLL MEMRasterBand CPL_NON_FINAL : public GDALPamRasterBand
 {
   private:
-    MEMRasterBand(GByte *pabyDataIn, GDALDataType eTypeIn, int nXSizeIn,
-                  int nYSizeIn);
-
     CPL_DISALLOW_COPY_ASSIGN(MEMRasterBand)
 
   protected:
@@ -156,6 +157,9 @@ class CPL_DLL MEMRasterBand CPL_NON_FINAL : public GDALPamRasterBand
     int bOwnData;
 
     bool m_bIsMask = false;
+
+    MEMRasterBand(GByte *pabyDataIn, GDALDataType eTypeIn, int nXSizeIn,
+                  int nYSizeIn, bool bOwnDataIn);
 
   public:
     MEMRasterBand(GDALDataset *poDS, int nBand, GByte *pabyData,

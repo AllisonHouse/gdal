@@ -63,6 +63,7 @@ class SNODASDataset final : public RawDataset
     ~SNODASDataset() override;
 
     CPLErr GetGeoTransform(double *padfTransform) override;
+
     const OGRSpatialReference *GetSpatialRef() const override
     {
         return &m_oSRS;
@@ -86,6 +87,7 @@ class SNODASRasterBand final : public RawRasterBand
 
   public:
     SNODASRasterBand(VSILFILE *fpRaw, int nXSize, int nYSize);
+
     ~SNODASRasterBand() override
     {
     }
@@ -456,11 +458,11 @@ GDALDataset *SNODASDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    SNODASDataset *poDS = new SNODASDataset();
+    auto poDS = std::make_unique<SNODASDataset>();
 
     poDS->nRasterXSize = nCols;
     poDS->nRasterYSize = nRows;
-    poDS->osDataFilename = osDataFilename;
+    poDS->osDataFilename = std::move(osDataFilename);
     poDS->bHasNoData = bHasNoData;
     poDS->dfNoData = dfNoData;
     poDS->bHasMin = bHasMin;
@@ -498,7 +500,10 @@ GDALDataset *SNODASDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create band information objects.                                */
     /* -------------------------------------------------------------------- */
-    poDS->SetBand(1, new SNODASRasterBand(fpRaw, nCols, nRows));
+    auto poBand = std::make_unique<SNODASRasterBand>(fpRaw, nCols, nRows);
+    if (!poBand->IsValid())
+        return nullptr;
+    poDS->SetBand(1, std::move(poBand));
 
     /* -------------------------------------------------------------------- */
     /*      Initialize any PAM information.                                 */
@@ -509,9 +514,9 @@ GDALDataset *SNODASDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Check for overviews.                                            */
     /* -------------------------------------------------------------------- */
-    poDS->oOvManager.Initialize(poDS, poOpenInfo->pszFilename);
+    poDS->oOvManager.Initialize(poDS.get(), poOpenInfo->pszFilename);
 
-    return poDS;
+    return poDS.release();
 }
 
 /************************************************************************/

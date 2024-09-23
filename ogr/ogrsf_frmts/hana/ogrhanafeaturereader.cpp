@@ -32,6 +32,7 @@
 #include "cpl_time.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <ctime>
 #include <limits>
@@ -82,7 +83,7 @@ template <typename T> T strToInt(const char *value)
 
 }  // anonymous namespace
 
-OGRHanaFeatureReader::OGRHanaFeatureReader(OGRFeature &feature)
+OGRHanaFeatureReader::OGRHanaFeatureReader(const OGRFeature &feature)
     : feature_(feature)
 {
 }
@@ -195,7 +196,7 @@ odbc::String OGRHanaFeatureReader::GetFieldAsString(int fieldIndex,
         defaultValue[strlen(defaultValue) - 1] == '\'')
     {
         CPLString str(defaultValue + 1);
-        str.resize(str.size() - 1);
+        str.pop_back();
         char *tmp = CPLUnescapeString(str, nullptr, CPLES_SQL);
         odbc::String ret = getString(tmp);
         CPLFree(tmp);
@@ -255,7 +256,7 @@ odbc::String OGRHanaFeatureReader::GetFieldAsNString(int fieldIndex,
         defaultValue[strlen(defaultValue) - 1] == '\'')
     {
         CPLString str(defaultValue + 1);
-        str.resize(str.size() - 1);
+        str.pop_back();
         char *tmp = CPLUnescapeString(str, nullptr, CPLES_SQL);
         odbc::String ret = getString(tmp);
         CPLFree(tmp);
@@ -469,7 +470,7 @@ odbc::String OGRHanaFeatureReader::GetFieldAsRealArray(int fieldIndex) const
         feature_.GetFieldAsDoubleList(fieldIndex, &numElements);
     return CreateStringFromValues<double>(
         values, numElements,
-        [](double value)
+        [](double value) -> std::string
         {
             return std::isnan(value)
                        ? "NULL"
@@ -487,7 +488,7 @@ odbc::String OGRHanaFeatureReader::GetFieldAsDoubleArray(int fieldIndex) const
         feature_.GetFieldAsDoubleList(fieldIndex, &numElements);
     return CreateStringFromValues<double>(
         values, numElements,
-        [](double value)
+        [](double value) -> std::string
         { return std::isnan(value) ? "NULL" : std::to_string(value); });
 }
 

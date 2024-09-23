@@ -32,6 +32,8 @@
 #include "gdal_frmts.h"
 #include "gdal_pam.h"
 
+#include <cmath>
+
 #define RIK_HEADER_DEBUG 0
 #define RIK_CLEAR_DEBUG 0
 #define RIK_PIXEL_DEBUG 0
@@ -284,9 +286,7 @@ CPLErr RIKRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
     }
     nBlockSize -= nBlockOffset;
 
-    GUInt32 pixels;
-
-    pixels = poRDS->nBlockXSize * poRDS->nBlockYSize;
+    const GUInt32 pixels = poRDS->nBlockXSize * poRDS->nBlockYSize;
 
     if (!nBlockOffset || !nBlockSize
 #ifdef RIK_SINGLE_BLOCK
@@ -306,7 +306,7 @@ CPLErr RIKRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
 
     if (poRDS->options == 0x00 || poRDS->options == 0x40)
     {
-        VSIFReadL(pImage, 1, nBlockXSize * nBlockYSize, poRDS->fp);
+        VSIFReadL(pImage, 1, pixels, poRDS->fp);
         return CE_None;
     }
 
@@ -625,7 +625,7 @@ RIKDataset::RIKDataset()
         "414.1055246174,41.3265500042,603.0582474221,-0.8551163377,2."
         "1413174055,-7.0227298286,0],AUTHORITY[\"EPSG\",\"6124\"]],PRIMEM["
         "\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0."
-        "01745329251994328,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\","
+        "0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\","
         "\"4124\"]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_"
         "of_origin\",0],PARAMETER[\"central_meridian\",15.80827777777778],"
         "PARAMETER[\"scale_factor\",1],PARAMETER[\"false_easting\",1500000],"
@@ -903,8 +903,8 @@ GDALDataset *RIKDataset::Open(GDALOpenInfo *poOpenInfo)
         CPL_SWAP32PTR(&header.iMPPNum);
 #endif
 
-        if (!CPLIsFinite(header.fSouth) || !CPLIsFinite(header.fWest) ||
-            !CPLIsFinite(header.fNorth) || !CPLIsFinite(header.fEast) ||
+        if (!std::isfinite(header.fSouth) || !std::isfinite(header.fWest) ||
+            !std::isfinite(header.fNorth) || !std::isfinite(header.fEast) ||
             header.iMPPNum == 0)
         {
             return nullptr;

@@ -44,10 +44,12 @@ template <class Iterator> class Range
     Range(Iterator b, Iterator e) : begin_(b), end_(e)
     {
     }
+
     Iterator begin() const
     {
         return begin_;
     }
+
     Iterator end() const
     {
         return end_;
@@ -65,16 +67,19 @@ template <typename LevelIterator> class RangeIterator
         : parent_(parent), idx_(idx)
     {
     }
+
     // Warning: this is a "pseudo" iterator, since operator* returns a value,
     // not a reference. This means we cannot have operator->
     std::pair<int, double> operator*() const
     {
         return std::make_pair(idx_, parent_.level(idx_));
     }
+
     bool operator!=(const RangeIterator &other) const
     {
         return idx_ != other.idx_;
     }
+
     const RangeIterator &operator++()
     {
         idx_++;
@@ -90,9 +95,11 @@ class FixedLevelRangeIterator
 {
   public:
     typedef RangeIterator<FixedLevelRangeIterator> Iterator;
-    FixedLevelRangeIterator(const double *levels, size_t count,
-                            double maxLevel = Inf)
-        : levels_(levels), count_(count), maxLevel_(maxLevel)
+
+    FixedLevelRangeIterator(const double *levels, size_t count, double minLevel,
+                            double maxLevel)
+        : levels_(levels), count_(count), minLevel_(minLevel),
+          maxLevel_(maxLevel)
     {
     }
 
@@ -101,13 +108,15 @@ class FixedLevelRangeIterator
         if (min > max)
             std::swap(min, max);
         size_t b = 0;
-        for (; b != count_ && levels_[b] < fudge(levels_[b], min); b++)
+        for (; b != count_ && levels_[b] < fudge(min, minLevel_, levels_[b]);
+             b++)
             ;
         if (min == max)
             return Range<Iterator>(Iterator(*this, int(b)),
                                    Iterator(*this, int(b)));
         size_t e = b;
-        for (; e != count_ && levels_[e] <= fudge(levels_[e], max); e++)
+        for (; e != count_ && levels_[e] <= fudge(max, minLevel_, levels_[e]);
+             e++)
             ;
         return Range<Iterator>(Iterator(*this, int(b)),
                                Iterator(*this, int(e)));
@@ -120,10 +129,16 @@ class FixedLevelRangeIterator
         return levels_[size_t(idx)];
     }
 
+    double minLevel() const
+    {
+        return minLevel_;
+    }
+
   private:
     const double *levels_;
     size_t count_;
-    double maxLevel_;
+    const double minLevel_;
+    const double maxLevel_;
 };
 
 struct TooManyLevelsException : public std::exception
@@ -144,8 +159,8 @@ struct IntervalLevelRangeIterator
     typedef RangeIterator<IntervalLevelRangeIterator> Iterator;
 
     // Construction by a offset and an interval
-    IntervalLevelRangeIterator(double offset, double interval)
-        : offset_(offset), interval_(interval)
+    IntervalLevelRangeIterator(double offset, double interval, double minLevel)
+        : offset_(offset), interval_(interval), minLevel_(minLevel)
     {
     }
 
@@ -159,7 +174,7 @@ struct IntervalLevelRangeIterator
         if (!(df_i1 >= INT_MIN && df_i1 < INT_MAX))
             throw TooManyLevelsException();
         int i1 = static_cast<int>(df_i1);
-        double l1 = fudge(level(i1), min);
+        double l1 = fudge(min, minLevel_, level(i1));
         if (l1 > min)
         {
             df_i1 = ceil((l1 - offset_) / interval_);
@@ -177,7 +192,7 @@ struct IntervalLevelRangeIterator
         if (!(df_i2 >= INT_MIN && df_i2 < INT_MAX))
             throw TooManyLevelsException();
         int i2 = static_cast<int>(df_i2);
-        double l2 = fudge(level(i2), max);
+        double l2 = fudge(max, minLevel_, level(i2));
         if (l2 > max)
         {
             df_i2 = floor((l2 - offset_) / interval_) + 1;
@@ -200,17 +215,24 @@ struct IntervalLevelRangeIterator
         return idx * interval_ + offset_;
     }
 
+    double minLevel() const
+    {
+        return minLevel_;
+    }
+
   private:
     const double offset_;
     const double interval_;
+    const double minLevel_;
 };
 
 class ExponentialLevelRangeIterator
 {
   public:
     typedef RangeIterator<ExponentialLevelRangeIterator> Iterator;
-    ExponentialLevelRangeIterator(double base)
-        : base_(base), base_ln_(std::log(base_))
+
+    ExponentialLevelRangeIterator(double base, double minLevel)
+        : base_(base), base_ln_(std::log(base_)), minLevel_(minLevel)
     {
     }
 
@@ -227,7 +249,7 @@ class ExponentialLevelRangeIterator
             std::swap(min, max);
 
         int i1 = index1(min);
-        double l1 = fudge(level(i1), min);
+        double l1 = fudge(min, minLevel_, level(i1));
         if (l1 > min)
             i1 = index1(l1);
         Iterator b(*this, i1);
@@ -236,7 +258,7 @@ class ExponentialLevelRangeIterator
             return Range<Iterator>(b, b);
 
         int i2 = index2(max);
-        double l2 = fudge(level(i2), max);
+        double l2 = fudge(max, minLevel_, level(i2));
         if (l2 > max)
             i2 = index2(l2);
         Iterator e(*this, i2);
@@ -249,6 +271,11 @@ class ExponentialLevelRangeIterator
         return Range<Iterator>(b, e);
     }
 
+    double minLevel() const
+    {
+        return minLevel_;
+    }
+
   private:
     int index1(double plevel) const
     {
@@ -259,6 +286,7 @@ class ExponentialLevelRangeIterator
             throw TooManyLevelsException();
         return static_cast<int>(dfVal);
     }
+
     int index2(double plevel) const
     {
         if (plevel < 1.0)
@@ -272,6 +300,7 @@ class ExponentialLevelRangeIterator
     // exponentiation base
     const double base_;
     const double base_ln_;
+    const double minLevel_;
 };
 
 }  // namespace marching_squares

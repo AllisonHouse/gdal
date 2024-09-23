@@ -89,6 +89,9 @@
 %token SWQT_ALL                 "ALL"
 %token SWQT_LIMIT               "LIMIT"
 %token SWQT_OFFSET              "OFFSET"
+%token SWQT_EXCEPT              "EXCEPT"
+%token SWQT_EXCLUDE             "EXCLUDE"
+%token SWQT_HIDDEN              "HIDDEN"
 
 %token SWQT_VALUE_START
 %token SWQT_SELECT_START
@@ -113,9 +116,9 @@
 %token SWQT_RESERVED_KEYWORD    "reserved keyword"
 
 /* Any grammar rule that does $$ = must be listed afterwards */
-/* as well as SWQT_INTEGER_NUMBER SWQT_FLOAT_NUMBER SWQT_STRING SWQT_IDENTIFIER that are allocated by swqlex() */
-%destructor { delete $$; } SWQT_INTEGER_NUMBER SWQT_FLOAT_NUMBER SWQT_STRING SWQT_IDENTIFIER
-%destructor { delete $$; } value_expr_list field_value value_expr value_expr_non_logical type_def table_def
+/* as well as SWQT_INTEGER_NUMBER SWQT_FLOAT_NUMBER SWQT_STRING SWQT_IDENTIFIER SWQT_HIDDEN that are allocated by swqlex(), and identifier */
+%destructor { delete $$; } SWQT_INTEGER_NUMBER SWQT_FLOAT_NUMBER SWQT_STRING SWQT_IDENTIFIER SWQT_HIDDEN identifier
+%destructor { delete $$; } value_expr_list field_value value_expr value_expr_non_logical type_def table_def as_clause as_clause_with_hidden
 
 %%
 
@@ -129,7 +132,7 @@ input:
     | SWQT_SELECT_START select_statement
         {
             context->poRoot = $2;
-            swq_fixup(context);
+            // swq_fixup() must be done by caller
         }
 
 value_expr:
@@ -386,8 +389,13 @@ value_expr_list:
             $$->PushSubExpression( $1 );
         }
 
-field_value:
+identifier:
     SWQT_IDENTIFIER
+
+    | SWQT_HIDDEN
+
+field_value:
+    identifier
         {
             $$ = $1;  // validation deferred.
             $$->eNodeType = SNT_COLUMN;
@@ -395,7 +403,7 @@ field_value:
             $$->table_index = -1;
         }
 
-    | SWQT_IDENTIFIER '.' SWQT_IDENTIFIER
+    | identifier '.' identifier
         {
             $$ = $1;  // validation deferred.
             $$->eNodeType = SNT_COLUMN;
@@ -507,7 +515,7 @@ value_expr_non_logical:
             $$->PushSubExpression( $3 );
         }
 
-    | SWQT_IDENTIFIER '(' value_expr_list ')'
+    | identifier '(' value_expr_list ')'
         {
             const swq_operation *poOp =
                     swq_op_registrar::GetOperator( $1->string_value );
@@ -551,20 +559,20 @@ value_expr_non_logical:
         }
 
 type_def:
-    SWQT_IDENTIFIER
+    identifier
     {
         $$ = new swq_expr_node( SWQ_CAST );
         $$->PushSubExpression( $1 );
     }
 
-    | SWQT_IDENTIFIER '(' SWQT_INTEGER_NUMBER ')'
+    | identifier '(' SWQT_INTEGER_NUMBER ')'
     {
         $$ = new swq_expr_node( SWQ_CAST );
         $$->PushSubExpression( $3 );
         $$->PushSubExpression( $1 );
     }
 
-    | SWQT_IDENTIFIER '(' SWQT_INTEGER_NUMBER ',' SWQT_INTEGER_NUMBER ')'
+    | identifier '(' SWQT_INTEGER_NUMBER ',' SWQT_INTEGER_NUMBER ')'
     {
         $$ = new swq_expr_node( SWQ_CAST );
         $$->PushSubExpression( $5 );
@@ -573,7 +581,7 @@ type_def:
     }
 
     /* e.g. GEOMETRY(POINT) */
-    | SWQT_IDENTIFIER '(' SWQT_IDENTIFIER ')'
+    | identifier '(' identifier ')'
     {
         OGRwkbGeometryType eType = OGRFromOGCGeomType($3->string_value);
         if( !EQUAL($1->string_value, "GEOMETRY") ||
@@ -591,7 +599,7 @@ type_def:
     }
 
     /* e.g. GEOMETRY(POINT,4326) */
-    | SWQT_IDENTIFIER '(' SWQT_IDENTIFIER ',' SWQT_INTEGER_NUMBER ')'
+    | identifier '(' identifier ',' SWQT_INTEGER_NUMBER ')'
     {
         OGRwkbGeometryType eType = OGRFromOGCGeomType($3->string_value);
         if( !EQUAL($1->string_value, "GEOMETRY") ||
@@ -640,25 +648,58 @@ select_field_list:
     column_spec
     | column_spec ',' select_field_list
 
-column_spec:
-    value_expr
+exclude_field:
+    field_value
         {
-            if( !context->poCurSelect->PushField( $1 ) )
+            if ( !context->poCurSelect->PushExcludeField( $1 ) )
             {
                 delete $1;
                 YYERROR;
             }
         }
 
-    | value_expr as_clause
+exclude_field_list:
+    exclude_field
+    | exclude_field ',' exclude_field_list
+
+except_or_exclude:
+    SWQT_EXCEPT
+    | SWQT_EXCLUDE
+
+column_spec:
+    value_expr
         {
-            if( !context->poCurSelect->PushField( $1, $2->string_value ) )
+            if( !context->poCurSelect->PushField( $1, nullptr, false, false ) )
+            {
+                delete $1;
+                YYERROR;
+            }
+        }
+
+    | value_expr as_clause_with_hidden
+        {
+            if( !context->poCurSelect->PushField( $1, $2->string_value, false, $2->bHidden ) )
             {
                 delete $1;
                 delete $2;
                 YYERROR;
             }
             delete $2;
+        }
+
+    | '*' except_or_exclude '(' exclude_field_list ')'
+        {
+            swq_expr_node *poNode = new swq_expr_node();
+            poNode->eNodeType = SNT_COLUMN;
+            poNode->string_value = CPLStrdup( "*" );
+            poNode->table_index = -1;
+            poNode->field_index = -1;
+
+            if( !context->poCurSelect->PushField( poNode, nullptr, false, false ) )
+            {
+                delete poNode;
+                YYERROR;
+            }
         }
 
     | '*'
@@ -669,14 +710,14 @@ column_spec:
             poNode->table_index = -1;
             poNode->field_index = -1;
 
-            if( !context->poCurSelect->PushField( poNode ) )
+            if( !context->poCurSelect->PushField( poNode, nullptr, false, false ) )
             {
                 delete poNode;
                 YYERROR;
             }
         }
 
-    | SWQT_IDENTIFIER '.' '*'
+    | identifier '.' '*'
         {
             CPLString osTableName = $1->string_value;
 
@@ -690,14 +731,14 @@ column_spec:
             poNode->table_index = -1;
             poNode->field_index = -1;
 
-            if( !context->poCurSelect->PushField( poNode ) )
+            if( !context->poCurSelect->PushField( poNode, nullptr, false, false ) )
             {
                 delete poNode;
                 YYERROR;
             }
         }
 
-    | SWQT_IDENTIFIER '(' '*' ')'
+    | identifier '(' '*' ')'
         {
                 // special case for COUNT(*), confirm it.
             if( !EQUAL($1->string_value, "COUNT") )
@@ -721,14 +762,14 @@ column_spec:
             swq_expr_node *count = new swq_expr_node( SWQ_COUNT );
             count->PushSubExpression( poNode );
 
-            if( !context->poCurSelect->PushField( count ) )
+            if( !context->poCurSelect->PushField( count, nullptr, false, false ) )
             {
                 delete count;
                 YYERROR;
             }
         }
 
-    | SWQT_IDENTIFIER '(' '*' ')' as_clause
+    | identifier '(' '*' ')' as_clause
         {
                 // special case for COUNT(*), confirm it.
             if( !EQUAL($1->string_value, "COUNT") )
@@ -753,7 +794,7 @@ column_spec:
             swq_expr_node *count = new swq_expr_node( SWQ_COUNT );
             count->PushSubExpression( poNode );
 
-            if( !context->poCurSelect->PushField( count, $5->string_value ) )
+            if( !context->poCurSelect->PushField( count, $5->string_value, false, $5->bHidden ) )
             {
                 delete count;
                 delete $5;
@@ -763,7 +804,7 @@ column_spec:
             delete $5;
         }
 
-    | SWQT_IDENTIFIER '(' SWQT_DISTINCT field_value ')'
+    | identifier '(' SWQT_DISTINCT field_value ')'
         {
                 // special case for COUNT(DISTINCT x), confirm it.
             if( !EQUAL($1->string_value, "COUNT") )
@@ -781,14 +822,14 @@ column_spec:
             swq_expr_node *count = new swq_expr_node( SWQ_COUNT );
             count->PushSubExpression( $4 );
 
-            if( !context->poCurSelect->PushField( count, nullptr, TRUE ) )
+            if( !context->poCurSelect->PushField( count, nullptr, true, false ) )
             {
                 delete count;
                 YYERROR;
             }
         }
 
-    | SWQT_IDENTIFIER '(' SWQT_DISTINCT field_value ')' as_clause
+    | identifier '(' SWQT_DISTINCT field_value ')' as_clause
         {
             // special case for COUNT(DISTINCT x), confirm it.
             if( !EQUAL($1->string_value, "COUNT") )
@@ -804,7 +845,7 @@ column_spec:
             swq_expr_node *count = new swq_expr_node( SWQ_COUNT );
             count->PushSubExpression( $4 );
 
-            if( !context->poCurSelect->PushField( count, $6->string_value, TRUE ) )
+            if( !context->poCurSelect->PushField( count, $6->string_value, true, $6->bHidden ) )
             {
                 delete $1;
                 delete count;
@@ -817,13 +858,25 @@ column_spec:
         }
 
 as_clause:
-    SWQT_AS SWQT_IDENTIFIER
+    SWQT_AS identifier
         {
-            delete $1;
             $$ = $2;
+            $2 = nullptr;
         }
 
-    | SWQT_IDENTIFIER
+    | identifier
+
+as_clause_with_hidden:
+    as_clause
+
+    | as_clause SWQT_HIDDEN
+        {
+            $$ = $1;
+            $1 = nullptr;
+            delete $2;
+            $2 = nullptr;
+            $$->bHidden = true;
+        }
 
 opt_where:
     | SWQT_WHERE value_expr
@@ -889,7 +942,7 @@ opt_offset:
     }
 
 table_def:
-    SWQT_IDENTIFIER
+    identifier
     {
         const int iTable =
             context->poCurSelect->PushTableDef( nullptr, $1->string_value,
@@ -899,7 +952,7 @@ table_def:
         $$ = new swq_expr_node( iTable );
     }
 
-    | SWQT_IDENTIFIER as_clause
+    | identifier as_clause
     {
         const int iTable =
             context->poCurSelect->PushTableDef( nullptr, $1->string_value,
@@ -910,7 +963,7 @@ table_def:
         $$ = new swq_expr_node( iTable );
     }
 
-    | SWQT_STRING '.' SWQT_IDENTIFIER
+    | SWQT_STRING '.' identifier
     {
         const int iTable =
             context->poCurSelect->PushTableDef( $1->string_value,
@@ -921,7 +974,7 @@ table_def:
         $$ = new swq_expr_node( iTable );
     }
 
-    | SWQT_STRING '.' SWQT_IDENTIFIER as_clause
+    | SWQT_STRING '.' identifier as_clause
     {
         const int iTable =
             context->poCurSelect->PushTableDef( $1->string_value,
@@ -934,7 +987,7 @@ table_def:
         $$ = new swq_expr_node( iTable );
     }
 
-    | SWQT_IDENTIFIER '.' SWQT_IDENTIFIER
+    | identifier '.' identifier
     {
         const int iTable =
             context->poCurSelect->PushTableDef( $1->string_value,
@@ -945,7 +998,7 @@ table_def:
         $$ = new swq_expr_node( iTable );
     }
 
-    | SWQT_IDENTIFIER '.' SWQT_IDENTIFIER as_clause
+    | identifier '.' identifier as_clause
     {
         const int iTable =
             context->poCurSelect->PushTableDef( $1->string_value,

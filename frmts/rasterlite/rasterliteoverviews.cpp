@@ -343,15 +343,15 @@ CPLErr RasterliteDataset::CreateOverviewLevel(const char *pszResampling,
 
     const GDALDataType eDataType = GetRasterBand(1)->GetRasterDataType();
     int nDataTypeSize = GDALGetDataTypeSize(eDataType) / 8;
-    GByte *pabyMEMDSBuffer = reinterpret_cast<GByte *>(
-        VSIMalloc3(nBlockXSize, nBlockYSize, nBands * nDataTypeSize));
+    GByte *pabyMEMDSBuffer = reinterpret_cast<GByte *>(VSIMalloc3(
+        nBlockXSize, nBlockYSize, cpl::fits_on<int>(nBands * nDataTypeSize)));
     if (pabyMEMDSBuffer == nullptr)
     {
         return CE_Failure;
     }
 
-    CPLString osTempFileName;
-    osTempFileName.Printf("/vsimem/%p", hDS);
+    const CPLString osTempFileName(
+        VSIMemGenerateHiddenFilename("rasterlite_tile"));
 
     int nTileId = 0;
     int nBlocks = 0;
@@ -431,8 +431,9 @@ CPLErr RasterliteDataset::CreateOverviewLevel(const char *pszResampling,
 
     if (!STARTS_WITH_CI(pszResampling, "NEAR"))
     {
-        pabyPrevOvrMEMDSBuffer = reinterpret_cast<GByte *>(VSIMalloc3(
-            nPrevOvrBlockXSize, nPrevOvrBlockYSize, nBands * nDataTypeSize));
+        pabyPrevOvrMEMDSBuffer = reinterpret_cast<GByte *>(
+            VSIMalloc3(nPrevOvrBlockXSize, nPrevOvrBlockYSize,
+                       cpl::fits_on<int>(nBands * nDataTypeSize)));
         if (pabyPrevOvrMEMDSBuffer == nullptr)
         {
             VSIFree(pabyMEMDSBuffer);
